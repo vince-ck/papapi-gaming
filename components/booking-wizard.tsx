@@ -1,17 +1,27 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
-import { Loader2, Gamepad2, Mail, CheckCircle, Copy, Check, Minus, Plus, CalendarRange, Heart } from "lucide-react"
+import {
+  Loader2,
+  Gamepad2,
+  Mail,
+  CheckCircle,
+  Copy,
+  Check,
+  Minus,
+  Plus,
+  CalendarRange,
+  Heart,
+  ImageIcon,
+  Info,
+} from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getAssistanceTypes, createBooking, initializeAssistanceTypes, getBookings } from "@/actions/assistance"
 import { FormWizard } from "@/components/form-wizard"
@@ -19,9 +29,8 @@ import type { AssistanceType } from "@/models/assistance"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-
-// Add a version constant at the top of the file, after the imports
-const FORM_CACHE_VERSION = "1.0.0" // Increment this when form structure changes
+import { MultiFileUpload } from "@/components/multi-file-upload"
+import React from "react"
 
 // Form schema
 const formSchema = z.object({
@@ -99,27 +108,6 @@ const generateTimeOptions = () => {
   return options
 }
 
-// Add this function to check for duplicate bookings before form submission
-const checkForDuplicateBookings = async (characterId: string, assistanceTypeId: string): Promise<boolean> => {
-  try {
-    // Get all bookings
-    const bookings = await getBookings()
-
-    // Filter for active bookings with the same character ID and assistance type
-    const duplicateBookings = bookings.filter(
-      (booking) =>
-        booking.characterId === characterId &&
-        booking.assistanceTypeId === assistanceTypeId &&
-        booking.status !== "cancelled",
-    )
-
-    return duplicateBookings.length > 0
-  } catch (error) {
-    console.error("Error checking for duplicate bookings:", error)
-    return false // In case of error, allow submission
-  }
-}
-
 export function BookingWizard() {
   const router = useRouter()
   const [assistanceTypes, setAssistanceTypes] = useState<AssistanceType[]>([])
@@ -136,40 +124,12 @@ export function BookingWizard() {
   const [showDonationModal, setShowDonationModal] = useState(false)
   const [pendingSubmission, setPendingSubmission] = useState(false)
   const [selectAllDays, setSelectAllDays] = useState(false)
+  const [selectedAssistanceType, setSelectedAssistanceType] = useState<AssistanceType | null>(null)
 
-  // Load cached values from localStorage
-  useEffect(() => {
-    const cachedVersion = localStorage.getItem("papapi-cache-version")
-
-    // If version mismatch or no version found, clear cache and return
-    if (cachedVersion !== FORM_CACHE_VERSION) {
-      console.log("Cache version mismatch, clearing cached form data")
-      localStorage.removeItem("papapi-characterId")
-      localStorage.removeItem("papapi-contactInfo")
-      // Add any other cached fields here
-      localStorage.setItem("papapi-cache-version", FORM_CACHE_VERSION)
-      return
-    }
-
-    // Load cached values if version is compatible
-    const cachedCharacterId = localStorage.getItem("papapi-characterId") || ""
-    const cachedContactInfo = localStorage.getItem("papapi-contactInfo") || ""
-
-    if (cachedCharacterId) {
-      form.setValue("characterId", cachedCharacterId)
-    }
-
-    if (cachedContactInfo) {
-      form.setValue("contactInfo", cachedContactInfo)
-    }
-  }, [])
-
-  // Save values to localStorage when they change
-  // Update the saveToLocalStorage function to include version information
-  const saveToLocalStorage = (field: string, value: string) => {
-    localStorage.setItem(`papapi-${field}`, value)
-    localStorage.setItem(`papapi-cache-version`, FORM_CACHE_VERSION)
-  }
+  // Direct DOM references for problematic fields
+  const characterIdRef = useRef<HTMLInputElement>(null)
+  const contactInfoRef = useRef<HTMLInputElement>(null)
+  const additionalInfoRef = useRef<HTMLTextAreaElement>(null)
 
   // Initialize form
   const form = useForm<FormValues>({
@@ -189,8 +149,33 @@ export function BookingWizard() {
     },
   })
 
-  // Define wizard steps - only used for the form wizard, not for completion
-  const steps = [
+  // Load cached values from localStorage
+  useEffect(() => {
+    const cachedCharacterId = localStorage.getItem("papapi-characterId") || ""
+    const cachedContactInfo = localStorage.getItem("papapi-contactInfo") || ""
+
+    if (cachedCharacterId) {
+      form.setValue("characterId", cachedCharacterId)
+      if (characterIdRef.current) {
+        characterIdRef.current.value = cachedCharacterId
+      }
+    }
+
+    if (cachedContactInfo) {
+      form.setValue("contactInfo", cachedContactInfo)
+      if (contactInfoRef.current) {
+        contactInfoRef.current.value = cachedContactInfo
+      }
+    }
+  }, [form])
+
+  // Save values to localStorage
+  const saveToLocalStorage = (field: string, value: string) => {
+    localStorage.setItem(`papapi-${field}`, value)
+  }
+
+  // Define base wizard steps
+  const baseSteps = [
     {
       id: "character",
       title: "Customer Details",
@@ -213,89 +198,62 @@ export function BookingWizard() {
     },
   ]
 
+  // Dynamically filter steps based on scheduling availability
+  const steps = React.useMemo(() => {
+    if (!selectedAssistanceType) return baseSteps
+
+    // If scheduling is disabled, remove the schedule step
+    if (selectedAssistanceType.allowSchedule === false) {
+      return baseSteps.filter((step) => step.id !== "schedule")
+    }
+
+    return baseSteps
+  }, [selectedAssistanceType])
+
+  // Get the actual step index based on the filtered steps
+  const getActualStepIndex = (stepIndex: number): number => {
+    // If scheduling is disabled and we're past the assistance info step
+    if (selectedAssistanceType?.allowSchedule === false && stepIndex >= 2) {
+      // Skip the schedule step (index 2)
+      return stepIndex + 1
+    }
+    return stepIndex
+  }
+
   // Check if current step is valid
   const isStepValid = () => {
-    const values = form.getValues()
-    const errors = form.formState.errors
+    // Get the actual step in the base steps array
+    const actualStep = getActualStepIndex(currentStep)
 
     // Check if there are any errors in the current step's fields
-    switch (currentStep) {
+    switch (actualStep) {
       case 0: // Character step and assistance type
-        return (
-          !errors.characterId &&
-          !errors.contactInfo &&
-          !errors.assistanceTypeId &&
-          /^\d+$/.test(values.characterId || "") &&
-          values.contactInfo?.trim()?.length > 0 &&
-          values.assistanceTypeId?.trim()?.length > 0
-        )
+        const characterId = characterIdRef.current?.value || ""
+        const contactInfo = contactInfoRef.current?.value || ""
+        const assistanceTypeId = form.getValues("assistanceTypeId")
+
+        return /^\d+$/.test(characterId) && contactInfo.trim().length > 0 && assistanceTypeId?.trim().length > 0
       case 1: // Additional info step
-        return !errors.additionalInfo && values.additionalInfo?.trim()?.length > 0
+        const additionalInfo = additionalInfoRef.current?.value || ""
+        return additionalInfo.trim().length > 0
       case 2: // Schedule step
+        const selectedDays = form.getValues("selectedDays")
+        const timeRangePreset = form.getValues("timeRangePreset")
+        const startTime = form.getValues("startTime")
+        const endTime = form.getValues("endTime")
+
         return (
-          !errors.selectedDays &&
-          !errors.timeRangePreset &&
-          !errors.startTime &&
-          !errors.endTime &&
-          !errors.slots &&
-          values.selectedDays &&
-          values.selectedDays.length > 0 &&
-          (values.timeRangePreset !== "custom" ||
-            (values.startTime && values.endTime && values.startTime < values.endTime))
+          selectedDays &&
+          selectedDays.length > 0 &&
+          (timeRangePreset !== "custom" || (startTime && endTime && startTime < endTime))
         )
       case 3: // Review step
-        return !errors.willingToDonate && (values.willingToDonate === "yes" || values.willingToDonate === "no")
+        const willingToDonate = form.getValues("willingToDonate")
+        return willingToDonate === "yes" || willingToDonate === "no"
       default:
         return false
     }
   }
-
-  // Add a debounced validation effect that only runs when needed
-  useEffect(() => {
-    // Only validate fields relevant to the current step
-    const fieldsToValidate = (() => {
-      switch (currentStep) {
-        case 0:
-          return ["characterId", "contactInfo", "assistanceTypeId"]
-        case 1:
-          return ["additionalInfo"]
-        case 2:
-          return ["selectedDays", "timeRangePreset", "startTime", "endTime", "slots"]
-        case 3:
-          return ["willingToDonate"]
-        default:
-          return []
-      }
-    })()
-
-    // Use a timeout to debounce validation
-    const timeoutId = setTimeout(() => {
-      if (fieldsToValidate.length > 0) {
-        // Only trigger validation if the form is dirty or has been submitted
-        if (form.formState.isDirty) {
-          form.trigger(fieldsToValidate as any)
-        }
-      }
-    }, 300) // 300ms debounce
-
-    return () => clearTimeout(timeoutId)
-  }, [
-    form.watch([
-      "characterId",
-      "contactInfo",
-      "assistanceTypeId",
-      "additionalInfo",
-      "selectedDays",
-      "timeRangePreset",
-      "startTime",
-      "endTime",
-      "slots",
-      "willingToDonate",
-    ]),
-    currentStep,
-    form,
-    form.formState.isDirty,
-  ])
 
   // Load assistance types
   useEffect(() => {
@@ -311,7 +269,18 @@ export function BookingWizard() {
 
         // Set default value if available
         if (types.length > 0 && !form.getValues("assistanceTypeId")) {
-          form.setValue("assistanceTypeId", types[0]._id as string)
+          const defaultTypeId = types[0]._id as string
+          form.setValue("assistanceTypeId", defaultTypeId)
+          setSelectedAssistanceType(types[0])
+        } else {
+          // Set the selected type based on the current form value
+          const currentTypeId = form.getValues("assistanceTypeId")
+          if (currentTypeId) {
+            const currentType = types.find((type) => type._id?.toString() === currentTypeId)
+            if (currentType) {
+              setSelectedAssistanceType(currentType)
+            }
+          }
         }
       } catch (error) {
         console.error("Error loading assistance types:", error)
@@ -347,11 +316,35 @@ export function BookingWizard() {
   // Handle next step
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
-      // If we're on the review step (step 3), submit the form
-      if (currentStep === 3) {
-        handleSubmit()
-      } else {
+      // Update form values from refs
+      if (characterIdRef.current) {
+        form.setValue("characterId", characterIdRef.current.value)
+      }
+      if (contactInfoRef.current) {
+        form.setValue("contactInfo", contactInfoRef.current.value)
+      }
+      if (additionalInfoRef.current) {
+        form.setValue("additionalInfo", additionalInfoRef.current.value)
+      }
+
+      // Check validation but proceed only if valid
+      if (isStepValid()) {
         setCurrentStep(currentStep + 1)
+      } else {
+        // Show validation errors or messages
+        // This will trigger validation UI to show errors
+        form.trigger()
+
+        // You can also set a message to inform the user
+        setMessage({
+          type: "error",
+          text: "Please fill in all required fields correctly before proceeding",
+        })
+
+        // Clear the message after a few seconds
+        setTimeout(() => {
+          setMessage(null)
+        }, 3000)
       }
     }
   }
@@ -434,19 +427,51 @@ export function BookingWizard() {
     return orderedDays.map((day) => DAYS_OF_WEEK.find((d) => d.id === day)?.label).join(", ")
   }
 
-  // Handle form submission check
+  // Handle form submission
   const handleSubmit = async () => {
+    // Update form values from refs
+    if (characterIdRef.current) {
+      form.setValue("characterId", characterIdRef.current.value)
+    }
+    if (contactInfoRef.current) {
+      form.setValue("contactInfo", contactInfoRef.current.value)
+    }
+    if (additionalInfoRef.current) {
+      form.setValue("additionalInfo", additionalInfoRef.current.value)
+    }
+
+    // Validate all fields before submission
+    const isValid = await form.trigger()
+
+    if (!isValid) {
+      return // Don't proceed if validation fails
+    }
+
     const values = form.getValues()
 
     // Check for duplicate bookings first
-    const isDuplicate = await checkForDuplicateBookings(values.characterId, values.assistanceTypeId)
+    try {
+      // Get all bookings
+      const bookings = await getBookings()
 
-    if (isDuplicate) {
-      setMessage({
-        type: "error",
-        text: "You already have an active request for this assistance type. Please wait until it's completed or cancelled before requesting again.",
-      })
-      return
+      // Filter for active bookings with the same character ID and assistance type
+      const duplicateBookings = bookings.filter(
+        (booking) =>
+          booking.characterId === values.characterId &&
+          booking.assistanceTypeId === values.assistanceTypeId &&
+          booking.status !== "cancelled",
+      )
+
+      if (duplicateBookings.length > 0) {
+        setMessage({
+          type: "error",
+          text: "You already have an active request for this assistance type. Please wait until it's completed or cancelled before requesting again.",
+        })
+        return
+      }
+    } catch (error) {
+      console.error("Error checking for duplicate bookings:", error)
+      // Continue even if check fails
     }
 
     // If no duplicate, proceed with normal flow
@@ -482,6 +507,17 @@ export function BookingWizard() {
     setPendingSubmission(false)
 
     try {
+      // Update form values from refs
+      if (characterIdRef.current) {
+        form.setValue("characterId", characterIdRef.current.value)
+      }
+      if (contactInfoRef.current) {
+        form.setValue("contactInfo", contactInfoRef.current.value)
+      }
+      if (additionalInfoRef.current) {
+        form.setValue("additionalInfo", additionalInfoRef.current.value)
+      }
+
       const values = form.getValues()
 
       // Validate required fields before submission
@@ -601,11 +637,14 @@ export function BookingWizard() {
     setRequestNumber(null)
     setMessage(null)
     setPhotoUrls([])
-    setSelectAllDays(false) // Reset the selectAllDays state
+    setSelectAllDays(false)
+
+    // Reset refs
+    if (characterIdRef.current) characterIdRef.current.value = ""
+    if (contactInfoRef.current) contactInfoRef.current.value = ""
+    if (additionalInfoRef.current) additionalInfoRef.current.value = ""
 
     // Force a hard refresh if needed
-    // Using location.href causes a full page reload which is more reliable
-    // than router.push for resetting everything
     window.location.href = "/games/ragnarok-m-classic"
   }
 
@@ -613,6 +652,25 @@ export function BookingWizard() {
   const getAssistanceTypeName = (id: string) => {
     const type = assistanceTypes.find((type) => type._id === id)
     return type?.name || "Unknown"
+  }
+
+  // Add a handler for assistance type changes
+  const handleAssistanceTypeChange = (typeId: string) => {
+    const selectedType = assistanceTypes.find((type) => type._id?.toString() === typeId)
+    setSelectedAssistanceType(selectedType || null)
+    form.setValue("assistanceTypeId", typeId)
+  }
+
+  // Handle character ID change
+  const handleCharacterIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    saveToLocalStorage("characterId", value)
+  }
+
+  // Handle contact info change
+  const handleContactInfoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    saveToLocalStorage("contactInfo", value)
   }
 
   // Render the completion screen
@@ -659,456 +717,499 @@ export function BookingWizard() {
     )
   }
 
+  // Get the content for the current step
+  const getCurrentStepContent = () => {
+    // Get the actual step in the base steps array
+    const actualStep = getActualStepIndex(currentStep)
+
+    switch (actualStep) {
+      case 0: // Customer Details
+        return (
+          <div className="space-y-6">
+            <div>
+              <FormLabel htmlFor="characterId">Character ID</FormLabel>
+              <div className="flex items-center">
+                <Gamepad2 className="mr-2 h-4 w-4 text-muted-foreground" />
+                <input
+                  ref={characterIdRef}
+                  id="characterId"
+                  type="text"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Enter your character ID"
+                  onChange={handleCharacterIdChange}
+                  defaultValue={form.getValues("characterId")}
+                />
+              </div>
+              <FormDescription>Your in-game character ID (numbers only)</FormDescription>
+              {characterIdRef.current &&
+                !/^\d+$/.test(characterIdRef.current.value) &&
+                characterIdRef.current.value !== "" && (
+                  <p className="text-sm font-medium text-destructive">Character ID must contain only numbers</p>
+                )}
+            </div>
+
+            <div>
+              <FormLabel htmlFor="contactInfo">Contact Information</FormLabel>
+              <div className="flex items-center">
+                <Mail className="mr-2 h-4 w-4 text-muted-foreground" />
+                <input
+                  ref={contactInfoRef}
+                  id="contactInfo"
+                  type="text"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Email, Discord, WhatsApp, or Messenger"
+                  onChange={handleContactInfoChange}
+                  defaultValue={form.getValues("contactInfo")}
+                />
+              </div>
+              <FormDescription>
+                Please provide your contact details on at least one of the following platforms—WhatsApp, Discord,
+                Messenger, or Email—in case we're unable to reach you through in-game messages.
+              </FormDescription>
+              {contactInfoRef.current && contactInfoRef.current.value === "" && (
+                <p className="text-sm font-medium text-destructive">Contact information is required</p>
+              )}
+            </div>
+
+            <FormField
+              control={form.control}
+              name="assistanceTypeId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>What assistance do you need?</FormLabel>
+                  <Select
+                    disabled={isLoading || assistanceTypes.length === 0}
+                    onValueChange={(value) => {
+                      field.onChange(value)
+                      handleAssistanceTypeChange(value)
+                    }}
+                    defaultValue={field.value}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        {isLoading ? (
+                          <div className="flex items-center">
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            <span>Loading options...</span>
+                          </div>
+                        ) : (
+                          <SelectValue placeholder="Select assistance type" />
+                        )}
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {assistanceTypes.map((type) => (
+                        <SelectItem key={type._id as string} value={type._id as string}>
+                          {type.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>Select the type of assistance you need</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        )
+
+      case 1: // Assistance Info
+        return (
+          <div className="space-y-6">
+            <div>
+              <FormLabel htmlFor="additionalInfo">Additional Information</FormLabel>
+              <div className="flex items-start">
+                <Info className="mr-2 h-4 w-4 mt-2 text-muted-foreground" />
+                <textarea
+                  ref={additionalInfoRef}
+                  id="additionalInfo"
+                  className="min-h-[120px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  placeholder="Provide details about your request..."
+                  defaultValue={form.getValues("additionalInfo")}
+                />
+              </div>
+              <FormDescription>Include specific requirements or questions about your request</FormDescription>
+              {additionalInfoRef.current && additionalInfoRef.current.value === "" && (
+                <p className="text-sm font-medium text-destructive">Additional information is required</p>
+              )}
+            </div>
+
+            {selectedAssistanceType?.allowPhotoUpload && (
+              <FormField
+                control={form.control}
+                name="photoUrls"
+                render={() => (
+                  <FormItem>
+                    <FormLabel>Photo Attachments</FormLabel>
+                    <FormControl>
+                      <div className="flex items-start">
+                        <ImageIcon className="mr-2 h-4 w-4 mt-2 text-muted-foreground" />
+                        <div className="flex-1">
+                          <MultiFileUpload
+                            maxFiles={2}
+                            maxSizeMB={5}
+                            onChange={handlePhotoUrlsChange}
+                            value={photoUrls}
+                          />
+                        </div>
+                      </div>
+                    </FormControl>
+                    <FormDescription>Upload screenshots or images related to your request (optional)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+          </div>
+        )
+
+      case 2: // Schedule
+        return (
+          <div className="space-y-6">
+            <FormField
+              control={form.control}
+              name="selectedDays"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex justify-between items-center mb-2">
+                    <FormLabel>
+                      Days of The Week <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectAllDays}
+                        onChange={(e) => handleSelectAllDays(e.target.checked)}
+                        className="rounded border-input h-4 w-4 text-primary focus:ring-primary"
+                      />
+                      <span>Select All</span>
+                    </label>
+                  </div>
+                  <FormControl>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {DAYS_OF_WEEK.map((day) => (
+                        <label
+                          key={day.id}
+                          className={`flex items-center justify-center p-2 rounded-md border cursor-pointer transition-colors ${
+                            field.value?.includes(day.id)
+                              ? "bg-primary/10 border-primary text-primary"
+                              : "bg-background border-input hover:bg-muted/50"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            value={day.id}
+                            checked={field.value?.includes(day.id)}
+                            onChange={(e) => {
+                              const checked = e.target.checked
+                              const currentValue = Array.isArray(field.value) ? [...field.value] : []
+                              const newValue = checked
+                                ? [...currentValue, day.id]
+                                : currentValue.filter((val) => val !== day.id)
+                              field.onChange(newValue)
+
+                              // Update selectAllDays state based on whether all days are selected
+                              if (checked && newValue.length === DAYS_OF_WEEK.length) {
+                                setSelectAllDays(true)
+                              } else if (!checked) {
+                                setSelectAllDays(false)
+                              }
+                            }}
+                          />
+                          <span>{day.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </FormControl>
+                  <FormDescription>Select at least one day you're available for assistance</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="timeRangePreset"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Time of The Day</FormLabel>
+                  <FormControl>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {Object.entries(TIME_RANGES).map(([key, range]) => (
+                        <label
+                          key={key}
+                          className={`flex items-center justify-center p-2 rounded-md border cursor-pointer transition-colors ${
+                            field.value === key
+                              ? "bg-primary/10 border-primary text-primary"
+                              : "bg-background border-input hover:bg-muted/50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            className="sr-only"
+                            value={key}
+                            checked={field.value === key}
+                            onChange={() => {
+                              field.onChange(key)
+                              handleTimeRangeChange(key as "early" | "middle" | "late" | "custom")
+                            }}
+                          />
+                          <span>{range.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </FormControl>
+                  <FormDescription>Select your preferred time range</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {selectedTimeRange === "custom" && (
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="startTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Start Time</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select start time" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {timeOptions.map((time) => (
+                            <SelectItem key={`start-${time}`} value={time}>
+                              {formatTime(time)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="endTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>End Time</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select end time" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {timeOptions.map((time) => (
+                            <SelectItem key={`end-${time}`} value={time}>
+                              {formatTime(time)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
+            <FormField
+              control={form.control}
+              name="slots"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>How many slots do you need?</FormLabel>
+                  <FormControl>
+                    <div className="flex items-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="rounded-r-none"
+                        onClick={() => {
+                          const newValue = Math.max(1, field.value - 1)
+                          field.onChange(newValue)
+                        }}
+                        disabled={field.value <= 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <div className="flex-1 border-y border-input bg-background px-3 py-2 text-center">
+                        {field.value} {field.value === 1 ? "slot" : "slots"}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="rounded-l-none"
+                        onClick={() => {
+                          const newValue = Math.min(4, field.value + 1)
+                          field.onChange(newValue)
+                        }}
+                        disabled={field.value >= 4}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </FormControl>
+                  <FormDescription>Increase slots if you wish to invite friends to the party</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        )
+
+      case 3: // Review
+        return (
+          <div className="space-y-6">
+            <div className="rounded-lg border p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground">Character ID</h4>
+                  <p>{characterIdRef.current?.value || form.getValues("characterId")}</p>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground">Contact Info</h4>
+                  <p>{contactInfoRef.current?.value || form.getValues("contactInfo")}</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground">Assistance Type</h4>
+                <p>{getAssistanceTypeName(form.getValues("assistanceTypeId"))}</p>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium text-muted-foreground">Additional Information</h4>
+                <p className="whitespace-pre-wrap">
+                  {additionalInfoRef.current?.value || form.getValues("additionalInfo")}
+                </p>
+              </div>
+
+              {selectedAssistanceType?.allowSchedule ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground">Selected Days</h4>
+                    <p>{formatSelectedDays(form.getValues("selectedDays"))}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground">Time Range</h4>
+                    <p>{getTimeRangeDescription()}</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground">Schedule</h4>
+                  <p>Our team will contact you to arrange a suitable time.</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground">Number of Slots</h4>
+                  <p>
+                    {form.getValues("slots")} {form.getValues("slots") === 1 ? "slot" : "slots"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <FormField
+              control={form.control}
+              name="willingToDonate"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="border-2 border-primary/30 rounded-lg p-4 bg-primary/5 shadow-sm">
+                    <FormLabel className="text-lg font-medium flex items-center gap-2">
+                      <Heart className="h-5 w-5 text-red-500 fill-red-500" />
+                      <span>Support Our Service</span>
+                    </FormLabel>
+                    <FormDescription className="mt-1 mb-3 text-sm">
+                      Your donation helps us maintain and improve our assistance services. Donors receive priority
+                      scheduling and enhanced support.
+                    </FormDescription>
+                    <FormControl>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <label
+                          className={`flex-1 flex items-center justify-center p-4 rounded-md border-2 cursor-pointer transition-all ${
+                            field.value === "yes"
+                              ? "bg-primary/20 border-primary text-primary font-medium shadow-md scale-[1.02]"
+                              : "bg-background border-input hover:bg-muted/50 hover:border-primary/50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            className="sr-only"
+                            value="yes"
+                            checked={field.value === "yes"}
+                            onChange={() => field.onChange("yes")}
+                          />
+                          <Heart
+                            className={`mr-2 h-5 w-5 ${field.value === "yes" ? "text-red-500 fill-red-500" : ""}`}
+                          />
+                          <span>Yes, I'm willing to donate</span>
+                        </label>
+                        <label
+                          className={`flex-1 flex items-center justify-center p-4 rounded-md border-2 cursor-pointer transition-all ${
+                            field.value === "no"
+                              ? "bg-muted border-muted-foreground/30 text-muted-foreground"
+                              : "bg-background border-input hover:bg-muted/50"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            className="sr-only"
+                            value="no"
+                            checked={field.value === "no"}
+                            onChange={() => field.onChange("no")}
+                          />
+                          <span>No, I don't have intention to donate</span>
+                        </label>
+                      </div>
+                    </FormControl>
+                    <div className="mt-3 text-xs text-muted-foreground italic">
+                      Note: Donations are completely optional and you may still receive assistance.
+                    </div>
+                  </div>
+                </FormItem>
+              )}
+            />
+          </div>
+        )
+
+      default:
+        return null
+    }
+  }
+
   // Render the form wizard
   const renderFormWizard = () => {
     return (
-      <Form {...form}>
-        <form className="space-y-6">
+      <div className="space-y-6">
+        <Form {...form}>
           <FormWizard
             steps={steps}
             currentStep={currentStep}
             onStepChange={handleStepChange}
             isSubmitting={isSubmitting || pendingSubmission}
-            isStepValid={isStepValid()}
+            isStepValid={true} // Always enable the Next button
             onNext={handleNext}
             onPrevious={handlePrevious}
             onSubmit={handleSubmit}
           >
-            {/* Step 1: Character Information */}
-            {currentStep === 0 && (
-              <div className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="characterId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Character ID</FormLabel>
-                      <FormControl>
-                        <div className="flex items-center">
-                          <Gamepad2 className="mr-2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Enter your character ID"
-                            {...field}
-                            onChange={(e) => {
-                              field.onChange(e)
-                              saveToLocalStorage("characterId", e.target.value)
-                            }}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormDescription>Your in-game character ID (numbers only)</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="contactInfo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Contact Information</FormLabel>
-                      <FormControl>
-                        <div className="flex items-center">
-                          <Mail className="mr-2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Email, Discord, WhatsApp, or Messenger"
-                            {...field}
-                            onChange={(e) => {
-                              field.onChange(e)
-                              saveToLocalStorage("contactInfo", e.target.value)
-                            }}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormDescription>
-                        Please provide your contact details on at least one of the following platforms—WhatsApp,
-                        Discord, Messenger, or Email—in case we're unable to reach you through in-game messages.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="assistanceTypeId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>What assistance do you need?</FormLabel>
-                      <Select
-                        disabled={isLoading || assistanceTypes.length === 0}
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            {isLoading ? (
-                              <div className="flex items-center">
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                <span>Loading options...</span>
-                              </div>
-                            ) : (
-                              <SelectValue placeholder="Select assistance type" />
-                            )}
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {assistanceTypes.map((type) => (
-                            <SelectItem key={type._id as string} value={type._id as string}>
-                              {type.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>Select the type of assistance you need</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
-
-            {/* Step 2: Additional Information */}
-            {currentStep === 1 && (
-              <div className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="additionalInfo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Additional Information</FormLabel>
-                      <FormControl>
-                        <textarea
-                          className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          placeholder="Provide details about your request..."
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>Include specific requirements or questions about your request</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
-
-            {/* Step 3: Schedule */}
-            {currentStep === 2 && (
-              <div className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="selectedDays"
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className="flex justify-between items-center mb-2">
-                        <FormLabel>
-                          Days of The Week <span className="text-destructive">*</span>
-                        </FormLabel>
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={selectAllDays}
-                            onChange={(e) => handleSelectAllDays(e.target.checked)}
-                            className="rounded border-input h-4 w-4 text-primary focus:ring-primary"
-                          />
-                          <span>Select All</span>
-                        </label>
-                      </div>
-                      <FormControl>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          {DAYS_OF_WEEK.map((day) => (
-                            <label
-                              key={day.id}
-                              className={`flex items-center justify-center p-2 rounded-md border cursor-pointer transition-colors ${
-                                field.value?.includes(day.id)
-                                  ? "bg-primary/10 border-primary text-primary"
-                                  : "bg-background border-input hover:bg-muted/50"
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                className="sr-only"
-                                value={day.id}
-                                checked={field.value?.includes(day.id)}
-                                onChange={(e) => {
-                                  const checked = e.target.checked
-                                  const currentValue = Array.isArray(field.value) ? [...field.value] : []
-                                  const newValue = checked
-                                    ? [...currentValue, day.id]
-                                    : currentValue.filter((val) => val !== day.id)
-                                  field.onChange(newValue)
-
-                                  // Update selectAllDays state based on whether all days are selected
-                                  if (checked && newValue.length === DAYS_OF_WEEK.length) {
-                                    setSelectAllDays(true)
-                                  } else if (!checked) {
-                                    setSelectAllDays(false)
-                                  }
-                                }}
-                              />
-                              <span>{day.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </FormControl>
-                      <FormDescription>Select at least one day you're available for assistance</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="timeRangePreset"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Time of The Day</FormLabel>
-                      <FormControl>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          {Object.entries(TIME_RANGES).map(([key, range]) => (
-                            <label
-                              key={key}
-                              className={`flex items-center justify-center p-2 rounded-md border cursor-pointer transition-colors ${
-                                field.value === key
-                                  ? "bg-primary/10 border-primary text-primary"
-                                  : "bg-background border-input hover:bg-muted/50"
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                className="sr-only"
-                                value={key}
-                                checked={field.value === key}
-                                onChange={() => {
-                                  field.onChange(key)
-                                  handleTimeRangeChange(key as "early" | "middle" | "late" | "custom")
-                                }}
-                              />
-                              <span>{range.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </FormControl>
-                      <FormDescription>Select your preferred time range</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {selectedTimeRange === "custom" && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="startTime"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Start Time</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select start time" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {timeOptions.map((time) => (
-                                <SelectItem key={`start-${time}`} value={time}>
-                                  {formatTime(time)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="endTime"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>End Time</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select end time" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {timeOptions.map((time) => (
-                                <SelectItem key={`end-${time}`} value={time}>
-                                  {formatTime(time)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                )}
-
-                <FormField
-                  control={form.control}
-                  name="slots"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>How many slots do you need?</FormLabel>
-                      <FormControl>
-                        <div className="flex items-center">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            className="rounded-r-none"
-                            onClick={() => {
-                              const newValue = Math.max(1, field.value - 1)
-                              field.onChange(newValue)
-                            }}
-                            disabled={field.value <= 1}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                          <div className="flex-1 border-y border-input bg-background px-3 py-2 text-center">
-                            {field.value} {field.value === 1 ? "slot" : "slots"}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            className="rounded-l-none"
-                            onClick={() => {
-                              const newValue = Math.min(4, field.value + 1)
-                              field.onChange(newValue)
-                            }}
-                            disabled={field.value >= 4}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </FormControl>
-                      <FormDescription>Increase slots if you wish to invite friends to the party</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
-
-            {/* Step 4: Review */}
-            {currentStep === 3 && (
-              <div className="space-y-6">
-                <div className="rounded-lg border p-4 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-sm font-medium text-muted-foreground">Character ID</h4>
-                      <p>{form.getValues("characterId")}</p>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium text-muted-foreground">Contact Info</h4>
-                      <p>{form.getValues("contactInfo")}</p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground">Assistance Type</h4>
-                    <p>{getAssistanceTypeName(form.getValues("assistanceTypeId"))}</p>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground">Additional Information</h4>
-                    <p className="whitespace-pre-wrap">{form.getValues("additionalInfo")}</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-sm font-medium text-muted-foreground">Selected Days</h4>
-                      <p>{formatSelectedDays(form.getValues("selectedDays"))}</p>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium text-muted-foreground">Time Range</h4>
-                      <p>{getTimeRangeDescription()}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-sm font-medium text-muted-foreground">Number of Slots</h4>
-                      <p>
-                        {form.getValues("slots")} {form.getValues("slots") === 1 ? "slot" : "slots"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="willingToDonate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className="border-2 border-primary/30 rounded-lg p-4 bg-primary/5 shadow-sm">
-                        <FormLabel className="text-lg font-medium flex items-center gap-2">
-                          <Heart className="h-5 w-5 text-red-500 fill-red-500" />
-                          <span>Support Our Service</span>
-                        </FormLabel>
-                        <FormDescription className="mt-1 mb-3 text-sm">
-                          Your donation helps us maintain and improve our assistance services. Donors receive priority
-                          scheduling and enhanced support.
-                        </FormDescription>
-                        <FormControl>
-                          <div className="flex flex-col sm:flex-row gap-3">
-                            <label
-                              className={`flex-1 flex items-center justify-center p-4 rounded-md border-2 cursor-pointer transition-all ${
-                                field.value === "yes"
-                                  ? "bg-primary/20 border-primary text-primary font-medium shadow-md scale-[1.02]"
-                                  : "bg-background border-input hover:bg-muted/50 hover:border-primary/50"
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                className="sr-only"
-                                value="yes"
-                                checked={field.value === "yes"}
-                                onChange={() => field.onChange("yes")}
-                              />
-                              <Heart
-                                className={`mr-2 h-5 w-5 ${field.value === "yes" ? "text-red-500 fill-red-500" : ""}`}
-                              />
-                              <span>Yes, I'm willing to donate</span>
-                            </label>
-                            <label
-                              className={`flex-1 flex items-center justify-center p-4 rounded-md border-2 cursor-pointer transition-all ${
-                                field.value === "no"
-                                  ? "bg-muted border-muted-foreground/30 text-muted-foreground"
-                                  : "bg-background border-input hover:bg-muted/50"
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                className="sr-only"
-                                value="no"
-                                checked={field.value === "no"}
-                                onChange={() => field.onChange("no")}
-                              />
-                              <span>No, I don't have intention to donate</span>
-                            </label>
-                          </div>
-                        </FormControl>
-                        <div className="mt-3 text-xs text-muted-foreground italic">
-                          Note: Donations are completely optional and you may still receive assistance.
-                        </div>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
+            {getCurrentStepContent()}
           </FormWizard>
-        </form>
-      </Form>
+        </Form>
+      </div>
     )
   }
 

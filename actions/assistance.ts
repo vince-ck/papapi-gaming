@@ -239,48 +239,76 @@ export async function initializeAssistanceTypes(): Promise<void> {
           description: "Help with power leveling your character",
           isActive: true,
           listOrder: 1,
+          allowPhotoUpload: false,
+          allowSchedule: true,
         },
         {
           name: "Boss Hunting",
           description: "Assistance with defeating MVP or mini-boss monsters",
           isActive: true,
           listOrder: 2,
+          allowPhotoUpload: true, // Enable photo uploads for boss hunting
+          allowSchedule: true,
         },
         {
           name: "Quest Completion",
           description: "Help completing difficult quests or missions",
           isActive: true,
           listOrder: 3,
+          allowPhotoUpload: true, // Enable photo uploads for quest completion
+          allowSchedule: true,
         },
         {
           name: "Item Farming",
           description: "Assistance with farming specific items or materials",
           isActive: true,
           listOrder: 4,
+          allowPhotoUpload: false,
+          allowSchedule: true,
         },
         {
           name: "Build Consultation",
           description: "Expert advice on character builds and skill allocation",
           isActive: true,
           listOrder: 5,
+          allowPhotoUpload: false,
+          allowSchedule: false, // Disable scheduling for consultation
         },
         {
           name: "Equipment Enhancement",
           description: "Help with upgrading and enhancing equipment",
           isActive: true,
           listOrder: 6,
+          allowPhotoUpload: true, // Enable photo uploads for equipment enhancement
+          allowSchedule: false, // Disable scheduling for enhancement
         },
       ]
 
       await db.collection(ASSISTANCE_TYPES_COLLECTION).insertMany(defaultTypes)
     } else {
-      // Update existing assistance types to add listOrder if it doesn't exist
+      // Update existing assistance types to add listOrder and allowPhotoUpload if they don't exist
       const assistanceTypes = await db.collection(ASSISTANCE_TYPES_COLLECTION).find({}).toArray()
 
       for (let i = 0; i < assistanceTypes.length; i++) {
         const type = assistanceTypes[i]
+        const updates: Partial<AssistanceType> = {}
+
         if (type.listOrder === undefined) {
-          await db.collection(ASSISTANCE_TYPES_COLLECTION).updateOne({ _id: type._id }, { $set: { listOrder: i + 1 } })
+          updates.listOrder = i + 1
+        }
+
+        if (type.allowPhotoUpload === undefined) {
+          // Default to false for existing types
+          updates.allowPhotoUpload = false
+        }
+
+        if (type.allowSchedule === undefined) {
+          // Default to true for existing types
+          updates.allowSchedule = true
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await db.collection(ASSISTANCE_TYPES_COLLECTION).updateOne({ _id: type._id }, { $set: updates })
         }
       }
     }
@@ -313,6 +341,72 @@ export async function updateAssistanceTypeOrder(
   } catch (error) {
     console.error("Error updating assistance type order:", error)
     return { success: false, message: "Failed to update assistance type order" }
+  } finally {
+    revalidatePath("/admin/assistance-types")
+    revalidatePath("/games/ragnarok-m-classic")
+  }
+}
+
+// Add this function to toggle the allowPhotoUpload flag
+export async function toggleAssistanceTypePhotoUpload(
+  id: string,
+  allowPhotoUpload: boolean,
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const client = await clientPromise
+    const db = client.db()
+
+    // Validate the ID
+    let objectId: ObjectId
+    try {
+      objectId = new ObjectId(id)
+    } catch (error) {
+      return { success: false, message: "Invalid assistance type ID" }
+    }
+
+    // Update the allowPhotoUpload flag
+    await db.collection(ASSISTANCE_TYPES_COLLECTION).updateOne({ _id: objectId }, { $set: { allowPhotoUpload } })
+
+    return {
+      success: true,
+      message: `Photo uploads ${allowPhotoUpload ? "enabled" : "disabled"} successfully`,
+    }
+  } catch (error) {
+    console.error("Error updating assistance type photo upload setting:", error)
+    return { success: false, message: "Failed to update photo upload setting" }
+  } finally {
+    revalidatePath("/admin/assistance-types")
+    revalidatePath("/games/ragnarok-m-classic")
+  }
+}
+
+// Add this function to toggle the allowSchedule flag
+export async function toggleAssistanceTypeSchedule(
+  id: string,
+  allowSchedule: boolean,
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const client = await clientPromise
+    const db = client.db()
+
+    // Validate the ID
+    let objectId: ObjectId
+    try {
+      objectId = new ObjectId(id)
+    } catch (error) {
+      return { success: false, message: "Invalid assistance type ID" }
+    }
+
+    // Update the allowSchedule flag
+    await db.collection(ASSISTANCE_TYPES_COLLECTION).updateOne({ _id: objectId }, { $set: { allowSchedule } })
+
+    return {
+      success: true,
+      message: `Scheduling ${allowSchedule ? "enabled" : "disabled"} successfully`,
+    }
+  } catch (error) {
+    console.error("Error updating assistance type schedule setting:", error)
+    return { success: false, message: "Failed to update schedule setting" }
   } finally {
     revalidatePath("/admin/assistance-types")
     revalidatePath("/games/ragnarok-m-classic")

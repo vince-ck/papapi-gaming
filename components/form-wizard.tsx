@@ -114,7 +114,7 @@ export function FormWizard({
         )}
 
         {/* Next/Submit button */}
-        <Button type="button" onClick={handleNext} disabled={!isStepValid || isSubmitting}>
+        <Button type="button" onClick={handleNext} disabled={isSubmitting}>
           {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

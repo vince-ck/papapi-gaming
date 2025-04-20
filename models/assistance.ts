@@ -7,6 +7,8 @@ export interface AssistanceType {
   icon?: string
   isActive: boolean
   listOrder: number // Added listOrder field
+  allowPhotoUpload?: boolean // New flag to control photo upload visibility
+  allowSchedule?: boolean // New flag to control schedule visibility
 }
 
 export interface Booking {

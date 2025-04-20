@@ -7,7 +7,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button"
 import { Loader2, ArrowUp, ArrowDown, ArrowLeft } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getAssistanceTypes, updateAssistanceTypeOrder } from "@/actions/assistance"
+import {
+  getAssistanceTypes,
+  updateAssistanceTypeOrder,
+  toggleAssistanceTypePhotoUpload,
+  toggleAssistanceTypeSchedule,
+} from "@/actions/assistance"
 import type { AssistanceType } from "@/models/assistance"
 import Link from "next/link"
 import { LoginModal } from "@/components/login-modal"
@@ -119,6 +124,47 @@ export default function AdminAssistanceTypesPage() {
     }
   }
 
+  const togglePhotoUpload = async (id: string, allowPhotoUpload: boolean) => {
+    try {
+      setIsSaving(true)
+      const result = await toggleAssistanceTypePhotoUpload(id, allowPhotoUpload)
+
+      if (result.success) {
+        // Update the local state
+        setAssistanceTypes((prev) => prev.map((type) => (type._id === id ? { ...type, allowPhotoUpload } : type)))
+        setMessage({ type: "success", text: result.message })
+      } else {
+        setMessage({ type: "error", text: result.message })
+      }
+    } catch (error) {
+      console.error("Error toggling photo upload:", error)
+      setMessage({ type: "error", text: "Failed to update photo upload setting" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Add this function to toggle the schedule flag
+  const toggleSchedule = async (id: string, allowSchedule: boolean) => {
+    try {
+      setIsSaving(true)
+      const result = await toggleAssistanceTypeSchedule(id, allowSchedule)
+
+      if (result.success) {
+        // Update the local state
+        setAssistanceTypes((prev) => prev.map((type) => (type._id === id ? { ...type, allowSchedule } : type)))
+        setMessage({ type: "success", text: result.message })
+      } else {
+        setMessage({ type: "error", text: result.message })
+      }
+    } catch (error) {
+      console.error("Error toggling schedule:", error)
+      setMessage({ type: "error", text: "Failed to update schedule setting" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   // Show loading while checking authentication
   if (status === "loading") {
     return (
@@ -191,6 +237,18 @@ export default function AdminAssistanceTypesPage() {
                     <div>
                       <h3 className="font-medium">{type.name}</h3>
                       <p className="text-sm text-muted-foreground">{type.description}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${type.allowPhotoUpload ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+                        >
+                          {type.allowPhotoUpload ? "Photos Allowed" : "No Photos"}
+                        </span>
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full ${type.allowSchedule ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+                        >
+                          {type.allowSchedule ? "Schedule Enabled" : "No Schedule"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -209,6 +267,22 @@ export default function AdminAssistanceTypesPage() {
                       disabled={index === assistanceTypes.length - 1 || isSaving}
                     >
                       <ArrowDown className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => togglePhotoUpload(type._id as string, !type.allowPhotoUpload)}
+                      disabled={isSaving}
+                    >
+                      {type.allowPhotoUpload ? "Disable Photos" : "Enable Photos"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleSchedule(type._id as string, !type.allowSchedule)}
+                      disabled={isSaving}
+                    >
+                      {type.allowSchedule ? "Disable Schedule" : "Enable Schedule"}
                     </Button>
                   </div>
                 </div>
