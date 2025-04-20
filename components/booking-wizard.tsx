@@ -137,7 +137,7 @@ export function BookingWizard() {
     defaultValues: {
       characterId: "",
       contactInfo: "",
-      assistanceTypeId: "",
+      assistanceTypeId: "", // Removed default value
       additionalInfo: "",
       selectedDays: [],
       timeRangePreset: "early",
@@ -237,6 +237,11 @@ export function BookingWizard() {
         const additionalInfo = additionalInfoRef.current?.value || ""
         return additionalInfo.trim().length > 0
       case 2: // Schedule step
+        // Skip schedule validation if scheduling is disabled
+        if (selectedAssistanceType?.allowSchedule === false) {
+          return true
+        }
+
         const selectedDays = form.getValues("selectedDays")
         const timeRangePreset = form.getValues("timeRangePreset")
         const startTime = form.getValues("startTime")
@@ -267,21 +272,7 @@ export function BookingWizard() {
         const types = await getAssistanceTypes()
         setAssistanceTypes(types)
 
-        // Set default value if available
-        if (types.length > 0 && !form.getValues("assistanceTypeId")) {
-          const defaultTypeId = types[0]._id as string
-          form.setValue("assistanceTypeId", defaultTypeId)
-          setSelectedAssistanceType(types[0])
-        } else {
-          // Set the selected type based on the current form value
-          const currentTypeId = form.getValues("assistanceTypeId")
-          if (currentTypeId) {
-            const currentType = types.find((type) => type._id?.toString() === currentTypeId)
-            if (currentType) {
-              setSelectedAssistanceType(currentType)
-            }
-          }
-        }
+        // Don't set default value for assistance type
       } catch (error) {
         console.error("Error loading assistance types:", error)
         setMessage({ type: "error", text: "Failed to load assistance types" })
@@ -536,14 +527,23 @@ export function BookingWizard() {
       formData.append("assistanceTypeId", values.assistanceTypeId)
       formData.append("additionalInfo", values.additionalInfo.trim())
 
-      // Add selected days - ensure it's a valid array
-      const selectedDays = Array.isArray(values.selectedDays) ? values.selectedDays : []
-      formData.append("selectedDays", JSON.stringify(selectedDays))
+      // Only add schedule-related fields if scheduling is enabled
+      if (selectedAssistanceType?.allowSchedule !== false) {
+        // Add selected days - ensure it's a valid array
+        const selectedDays = Array.isArray(values.selectedDays) ? values.selectedDays : []
+        formData.append("selectedDays", JSON.stringify(selectedDays))
 
-      // Add time range
-      formData.append("timeRangePreset", values.timeRangePreset || "early")
-      formData.append("startTime", values.startTime || "")
-      formData.append("endTime", values.endTime || "")
+        // Add time range
+        formData.append("timeRangePreset", values.timeRangePreset || "early")
+        formData.append("startTime", values.startTime || "")
+        formData.append("endTime", values.endTime || "")
+      } else {
+        // Add empty values for schedule fields when scheduling is disabled
+        formData.append("selectedDays", JSON.stringify([]))
+        formData.append("timeRangePreset", "early")
+        formData.append("startTime", "")
+        formData.append("endTime", "")
+      }
 
       // Add photo URLs if any - ensure it's a valid array
       const safePhotoUrls = Array.isArray(photoUrls) ? photoUrls : []
@@ -551,8 +551,8 @@ export function BookingWizard() {
         formData.append("photoUrls", JSON.stringify(safePhotoUrls))
       }
 
-      // Add slots
-      formData.append("slots", (values.slots || 1).toString())
+      // Add slots only if scheduling is enabled
+      formData.append("slots", (selectedAssistanceType?.allowSchedule !== false ? values.slots || 1 : 1).toString())
 
       // Add willing to donate
       formData.append("willingToDonate", values.willingToDonate || "no")
@@ -562,8 +562,6 @@ export function BookingWizard() {
         const result = await createBooking(formData)
 
         if (result.success) {
-          setMessage({ type: "success", text: result.message })
-
           // Set the request number
           if (result.requestNumber) {
             setRequestNumber(result.requestNumber)
@@ -620,7 +618,7 @@ export function BookingWizard() {
     form.reset({
       characterId: "",
       contactInfo: "",
-      assistanceTypeId: assistanceTypes.length > 0 ? (assistanceTypes[0]._id as string) : "",
+      assistanceTypeId: "",
       additionalInfo: "",
       selectedDays: [],
       timeRangePreset: "early",
@@ -685,8 +683,8 @@ export function BookingWizard() {
         </div>
 
         {requestNumber && (
-          <div className="mt-8 p-6 bg-primary/5 rounded-lg border border-primary/20">
-            <h4 className="text-center font-medium mb-3">Your Request Number</h4>
+          <div className="mt-8 p-6 bg-primary/10 rounded-lg border-2 border-primary/30 shadow-md animate-pulse">
+            <h4 className="text-center font-bold text-lg mb-3">Your Request Number</h4>
             <div className="flex items-center justify-center gap-2 mb-4">
               <code className="bg-background px-4 py-2 rounded border text-lg font-mono select-all">
                 {requestNumber}
@@ -702,7 +700,7 @@ export function BookingWizard() {
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
-            <p className="text-sm text-center text-muted-foreground">
+            <p className="text-sm text-center font-medium">
               Please save this request number for tracking your booking status
             </p>
           </div>
@@ -783,7 +781,6 @@ export function BookingWizard() {
                       field.onChange(value)
                       handleAssistanceTypeChange(value)
                     }}
-                    defaultValue={field.value}
                     value={field.value}
                   >
                     <FormControl>
@@ -934,7 +931,7 @@ export function BookingWizard() {
               name="timeRangePreset"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Time of The Day</FormLabel>
+                  <FormLabel className="text-sm font-medium">Time of The Day</FormLabel>
                   <FormControl>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       {Object.entries(TIME_RANGES).map(([key, range]) => (
@@ -1096,31 +1093,31 @@ export function BookingWizard() {
               </div>
 
               {selectedAssistanceType?.allowSchedule ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-medium text-muted-foreground">Selected Days</h4>
-                    <p>{formatSelectedDays(form.getValues("selectedDays"))}</p>
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Selected Days</h4>
+                      <p>{formatSelectedDays(form.getValues("selectedDays"))}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-muted-foreground">Time Range</h4>
+                      <p>{getTimeRangeDescription()}</p>
+                    </div>
                   </div>
+
                   <div>
-                    <h4 className="text-sm font-medium text-muted-foreground">Time Range</h4>
-                    <p>{getTimeRangeDescription()}</p>
+                    <h4 className="text-sm font-medium text-muted-foreground">Number of Slots</h4>
+                    <p>
+                      {form.getValues("slots")} {form.getValues("slots") === 1 ? "slot" : "slots"}
+                    </p>
                   </div>
-                </div>
+                </>
               ) : (
                 <div>
                   <h4 className="text-sm font-medium text-muted-foreground">Schedule</h4>
                   <p>Our team will contact you to arrange a suitable time.</p>
                 </div>
               )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground">Number of Slots</h4>
-                  <p>
-                    {form.getValues("slots")} {form.getValues("slots") === 1 ? "slot" : "slots"}
-                  </p>
-                </div>
-              </div>
             </div>
 
             <FormField
@@ -1227,8 +1224,9 @@ export function BookingWizard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {message && (
-          <Alert variant={message.type === "success" ? "default" : "destructive"} className="mb-4">
+        {/* Only show error messages, not success messages */}
+        {message && message.type === "error" && (
+          <Alert variant="destructive" className="mb-4">
             <AlertDescription>{message.text}</AlertDescription>
           </Alert>
         )}
