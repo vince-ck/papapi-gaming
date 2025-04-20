@@ -15,7 +15,11 @@ const fontSans = FontSans({
 export const metadata: Metadata = {
   title: "Papa-Pi Gaming Assistant",
   description: "Your ultimate gaming companion",
-    generator: 'v0.dev'
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
+  },
 }
 
 export default function RootLayout({
