@@ -75,3 +75,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+.form-complete ol li:not(:last-child) {
+  pointer-events: none;
+}
+
+.form-complete ol li:not(:last-child) button {
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}

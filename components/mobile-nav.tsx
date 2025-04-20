@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Home, Gamepad2, Clock, Gift, Search, Bell, LogIn } from "lucide-react"
+import { Gamepad2, Clock, Gift, Search, Bell, LogIn } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -12,15 +12,14 @@ import { useSession } from "next-auth/react"
 import { LoginModal } from "@/components/login-modal"
 
 export function MobileNav() {
-  const [activeItem, setActiveItem] = useState("home")
+  const [activeItem, setActiveItem] = useState("games")
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
   const { data: session, status } = useSession()
 
   const navItems = [
-    { id: "home", icon: Home },
-    { id: "games", icon: Gamepad2 },
-    { id: "lucky-draw", icon: Gift },
-    { id: "recent", icon: Clock },
+    { id: "games", icon: Gamepad2, href: "/games/ragnarok-m-classic" },
+    { id: "lucky-draw", icon: Gift, href: "#" },
+    { id: "recent", icon: Clock, href: "/recent" },
   ]
 
   return (
@@ -29,7 +28,7 @@ export function MobileNav() {
       <div className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border/40 bg-card px-4 backdrop-blur md:hidden">
         <div className="flex items-center">
           <SidebarTrigger className="mr-2 md:hidden" />
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/games/ragnarok-m-classic" className="flex items-center gap-2">
             <PapaPiLogo size="md" />
             <div className="flex flex-col">
               <h1 className="font-bold text-sm leading-tight">Papa-Pi</h1>
@@ -61,19 +60,20 @@ export function MobileNav() {
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/40 bg-background/95 backdrop-blur md:hidden">
         <nav className="flex items-center justify-around">
           {navItems.map((item) => (
-            <Button
-              key={item.id}
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "flex h-16 w-16 flex-col items-center justify-center rounded-none",
-                activeItem === item.id && "text-primary",
-              )}
-              onClick={() => setActiveItem(item.id)}
-            >
-              <item.icon className="h-5 w-5" />
-              <span className="mt-1 text-xs">{item.id.charAt(0).toUpperCase() + item.id.slice(1)}</span>
-            </Button>
+            <Link key={item.id} href={item.href} className="block">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "flex h-16 w-16 flex-col items-center justify-center rounded-none",
+                  activeItem === item.id && "text-primary",
+                )}
+                onClick={() => setActiveItem(item.id)}
+              >
+                <item.icon className="h-5 w-5" />
+                <span className="mt-1 text-xs">{item.id.charAt(0).toUpperCase() + item.id.slice(1)}</span>
+              </Button>
+            </Link>
           ))}
         </nav>
       </div>

@@ -66,7 +66,7 @@ export function GameSidebar() {
 
   const otherMenuItems = [
     { id: "lucky-draw", icon: Gift, label: "Lucky Draw" },
-    { id: "recent", icon: Clock, label: "Recent" },
+    { id: "recent", icon: Clock, label: "Recent", href: "/recent" },
     { id: "favorites", icon: Heart, label: "Favorites" },
   ]
 
@@ -156,9 +156,18 @@ export function GameSidebar() {
                 onClick={() => setActiveItem(item.id)}
                 tooltip={item.label}
               >
-                <Button variant="ghost" className="w-full justify-start">
-                  <item.icon className="mr-2 h-5 w-5" />
-                  <span>{item.label}</span>
+                <Button variant="ghost" className="w-full justify-start" asChild={!!item.href}>
+                  {item.href ? (
+                    <Link href={item.href}>
+                      <item.icon className="mr-2 h-5 w-5" />
+                      <span>{item.label}</span>
+                    </Link>
+                  ) : (
+                    <>
+                      <item.icon className="mr-2 h-5 w-5" />
+                      <span>{item.label}</span>
+                    </>
+                  )}
                 </Button>
               </SidebarMenuButton>
             </SidebarMenuItem>
