@@ -38,10 +38,36 @@ export async function getAssistanceTypes(): Promise<AssistanceType[]> {
   }
 }
 
+// Check if a duplicate booking exists
+export async function checkDuplicateBooking(characterId: string, assistanceTypeId: string): Promise<boolean> {
+  try {
+    const client = await clientPromise
+    const db = client.db()
+
+    // Find any active bookings (not cancelled) with the same character ID and assistance type
+    const existingBooking = await db.collection(BOOKINGS_COLLECTION).findOne({
+      characterId,
+      assistanceTypeId: new ObjectId(assistanceTypeId),
+      status: { $ne: "cancelled" }, // Not equal to cancelled
+    })
+
+    // Return true if a duplicate exists
+    return !!existingBooking
+  } catch (error) {
+    console.error("Error checking for duplicate booking:", error)
+    // In case of error, assume no duplicate to avoid blocking legitimate requests
+    return false
+  }
+}
+
 // Update the createBooking function to handle the new fields
-export async function createBooking(
-  formData: FormData,
-): Promise<{ success: boolean; message: string; booking?: Partial<Booking>; requestNumber?: string }> {
+export async function createBooking(formData: FormData): Promise<{
+  success: boolean
+  message: string
+  booking?: Partial<Booking>
+  requestNumber?: string
+  isDuplicate?: boolean
+}> {
   try {
     const client = await clientPromise
     const db = client.db()
@@ -95,6 +121,17 @@ export async function createBooking(
     // Validate character ID is numeric
     if (!/^\d+$/.test(characterId)) {
       return { success: false, message: "Character ID must contain only numbers" }
+    }
+
+    // Check for duplicate booking
+    const isDuplicate = await checkDuplicateBooking(characterId, assistanceTypeId)
+    if (isDuplicate) {
+      return {
+        success: false,
+        message:
+          "You already have an active request for this assistance type. Please wait until it's completed or cancelled before requesting again.",
+        isDuplicate: true,
+      }
     }
 
     // Get assistance type name for reference

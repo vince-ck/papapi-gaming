@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Settings, Users, GamepadIcon as GameController, FileText, BarChart3, List } from "lucide-react"
+import { Settings, Users, GamepadIcon as GameController, FileText, BarChart3, List, CalendarClock } from "lucide-react"
 
 export function AdminPanel() {
   const { data: session } = useSession()
@@ -19,6 +19,13 @@ export function AdminPanel() {
       description: "Manage character images displayed in the Featured Toons section",
       icon: GameController,
       link: "/admin/featured-toons",
+    },
+    {
+      id: "assistance-requests",
+      name: "Assistance Requests",
+      description: "Manage all user assistance requests",
+      icon: CalendarClock,
+      link: "/admin/assistance-requests",
     },
     {
       id: "assistance-types",

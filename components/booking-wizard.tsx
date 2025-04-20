@@ -7,36 +7,18 @@ import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
-import {
-  Loader2,
-  Gamepad2,
-  Mail,
-  CheckCircle,
-  Copy,
-  Check,
-  Minus,
-  Plus,
-  AlertTriangle,
-  CalendarRange,
-} from "lucide-react"
+import { Loader2, Gamepad2, Mail, CheckCircle, Copy, Check, Minus, Plus, CalendarRange, Heart } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getAssistanceTypes, createBooking, initializeAssistanceTypes } from "@/actions/assistance"
+import { getAssistanceTypes, createBooking, initializeAssistanceTypes, getBookings } from "@/actions/assistance"
 import { FormWizard } from "@/components/form-wizard"
 import type { AssistanceType } from "@/models/assistance"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 // Add a version constant at the top of the file, after the imports
 const FORM_CACHE_VERSION = "1.0.0" // Increment this when form structure changes
@@ -117,6 +99,27 @@ const generateTimeOptions = () => {
   return options
 }
 
+// Add this function to check for duplicate bookings before form submission
+const checkForDuplicateBookings = async (characterId: string, assistanceTypeId: string): Promise<boolean> => {
+  try {
+    // Get all bookings
+    const bookings = await getBookings()
+
+    // Filter for active bookings with the same character ID and assistance type
+    const duplicateBookings = bookings.filter(
+      (booking) =>
+        booking.characterId === characterId &&
+        booking.assistanceTypeId === assistanceTypeId &&
+        booking.status !== "cancelled",
+    )
+
+    return duplicateBookings.length > 0
+  } catch (error) {
+    console.error("Error checking for duplicate bookings:", error)
+    return false // In case of error, allow submission
+  }
+}
+
 export function BookingWizard() {
   const router = useRouter()
   const [assistanceTypes, setAssistanceTypes] = useState<AssistanceType[]>([])
@@ -132,6 +135,7 @@ export function BookingWizard() {
   const [timeOptions] = useState(generateTimeOptions())
   const [showDonationModal, setShowDonationModal] = useState(false)
   const [pendingSubmission, setPendingSubmission] = useState(false)
+  const [selectAllDays, setSelectAllDays] = useState(false)
 
   // Load cached values from localStorage
   useEffect(() => {
@@ -175,7 +179,7 @@ export function BookingWizard() {
       contactInfo: "",
       assistanceTypeId: "",
       additionalInfo: "",
-      selectedDays: ["monday", "wednesday", "friday"], // Default selected days
+      selectedDays: [],
       timeRangePreset: "early",
       startTime: TIME_RANGES.early.startTime,
       endTime: TIME_RANGES.early.endTime,
@@ -189,12 +193,12 @@ export function BookingWizard() {
   const steps = [
     {
       id: "character",
-      title: "Basic Details",
+      title: "Customer Details",
       description: "Enter your character and contact information",
     },
     {
       id: "assistance",
-      title: "Additional Info",
+      title: "Assistance Info",
       description: "Provide more details about your request",
     },
     {
@@ -431,9 +435,22 @@ export function BookingWizard() {
   }
 
   // Handle form submission check
-  const handleSubmit = () => {
-    // Check if user is not willing to donate
-    if (form.getValues("willingToDonate") === "no") {
+  const handleSubmit = async () => {
+    const values = form.getValues()
+
+    // Check for duplicate bookings first
+    const isDuplicate = await checkForDuplicateBookings(values.characterId, values.assistanceTypeId)
+
+    if (isDuplicate) {
+      setMessage({
+        type: "error",
+        text: "You already have an active request for this assistance type. Please wait until it's completed or cancelled before requesting again.",
+      })
+      return
+    }
+
+    // If no duplicate, proceed with normal flow
+    if (values.willingToDonate === "no") {
       // Show donation modal
       setShowDonationModal(true)
       setPendingSubmission(true)
@@ -498,18 +515,6 @@ export function BookingWizard() {
         formData.append("photoUrls", JSON.stringify(safePhotoUrls))
       }
 
-      // Remove the code that adds startDate and endDate to the formData
-
-      // For backward compatibility with the existing API
-      // Create dummy startDate and endDate - ensure these are always set
-      // const today = new Date()
-      // formData.append("startDate", today.toISOString())
-      // formData.append("endDate", new Date(today.getTime() + 3600000).toISOString())
-
-      // Remove the old startDateTime and endDateTime lines
-      // formData.append("startDateTime", today.toISOString())
-      // formData.append("endDateTime", new Date(today.getTime() + 3600000).toISOString())
-
       // Add slots
       formData.append("slots", (values.slots || 1).toString())
 
@@ -536,7 +541,15 @@ export function BookingWizard() {
             router.refresh()
           }, 3000)
         } else {
-          setMessage({ type: "error", text: result.message })
+          // Check if this is a duplicate booking error
+          if (result.isDuplicate) {
+            setMessage({
+              type: "error",
+              text: "You already have an active request for this assistance type. Please wait until it's completed or cancelled before requesting again.",
+            })
+          } else {
+            setMessage({ type: "error", text: result.message })
+          }
         }
       } catch (error) {
         console.error("Error submitting booking:", error)
@@ -550,6 +563,21 @@ export function BookingWizard() {
     }
   }
 
+  // Add this function with the other handler functions
+  const handleSelectAllDays = (checked: boolean) => {
+    setSelectAllDays(checked)
+    if (checked) {
+      // Select all days
+      form.setValue(
+        "selectedDays",
+        DAYS_OF_WEEK.map((day) => day.id),
+      )
+    } else {
+      // Clear all days
+      form.setValue("selectedDays", [])
+    }
+  }
+
   // Handle starting a new booking
   const handleNewBooking = () => {
     // Reset the form state
@@ -558,7 +586,7 @@ export function BookingWizard() {
       contactInfo: "",
       assistanceTypeId: assistanceTypes.length > 0 ? (assistanceTypes[0]._id as string) : "",
       additionalInfo: "",
-      selectedDays: ["monday", "wednesday", "friday"],
+      selectedDays: [],
       timeRangePreset: "early",
       startTime: TIME_RANGES.early.startTime,
       endTime: TIME_RANGES.early.endTime,
@@ -573,6 +601,7 @@ export function BookingWizard() {
     setRequestNumber(null)
     setMessage(null)
     setPhotoUrls([])
+    setSelectAllDays(false) // Reset the selectAllDays state
 
     // Force a hard refresh if needed
     // Using location.href causes a full page reload which is more reliable
@@ -706,7 +735,7 @@ export function BookingWizard() {
                   name="assistanceTypeId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>How can we assist you?</FormLabel>
+                      <FormLabel>What assistance do you need?</FormLabel>
                       <Select
                         disabled={isLoading || assistanceTypes.length === 0}
                         onValueChange={field.onChange}
@@ -773,9 +802,20 @@ export function BookingWizard() {
                   name="selectedDays"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>
-                        Select Days <span className="text-destructive">*</span>
-                      </FormLabel>
+                      <div className="flex justify-between items-center mb-2">
+                        <FormLabel>
+                          Days of The Week <span className="text-destructive">*</span>
+                        </FormLabel>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectAllDays}
+                            onChange={(e) => handleSelectAllDays(e.target.checked)}
+                            className="rounded border-input h-4 w-4 text-primary focus:ring-primary"
+                          />
+                          <span>Select All</span>
+                        </label>
+                      </div>
                       <FormControl>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                           {DAYS_OF_WEEK.map((day) => (
@@ -799,6 +839,13 @@ export function BookingWizard() {
                                     ? [...currentValue, day.id]
                                     : currentValue.filter((val) => val !== day.id)
                                   field.onChange(newValue)
+
+                                  // Update selectAllDays state based on whether all days are selected
+                                  if (checked && newValue.length === DAYS_OF_WEEK.length) {
+                                    setSelectAllDays(true)
+                                  } else if (!checked) {
+                                    setSelectAllDays(false)
+                                  }
                                 }}
                               />
                               <span>{day.label}</span>
@@ -817,7 +864,7 @@ export function BookingWizard() {
                   name="timeRangePreset"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Time Range</FormLabel>
+                      <FormLabel>Time of The Day</FormLabel>
                       <FormControl>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                           {Object.entries(TIME_RANGES).map(([key, range]) => (
@@ -909,7 +956,7 @@ export function BookingWizard() {
                   name="slots"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Number of Slots</FormLabel>
+                      <FormLabel>How many slots do you need?</FormLabel>
                       <FormControl>
                         <div className="flex items-center">
                           <Button
@@ -943,7 +990,7 @@ export function BookingWizard() {
                           </Button>
                         </div>
                       </FormControl>
-                      <FormDescription>How many slots do you need?</FormDescription>
+                      <FormDescription>Increase slots if you wish to invite friends to the party</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1002,47 +1049,58 @@ export function BookingWizard() {
                   name="willingToDonate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Would you like to donate to support our service?</FormLabel>
-                      <FormControl>
-                        <div className="flex gap-4">
-                          <label
-                            className={`flex-1 flex items-center justify-center p-3 rounded-md border cursor-pointer transition-colors ${
-                              field.value === "yes"
-                                ? "bg-primary/10 border-primary text-primary"
-                                : "bg-background border-input hover:bg-muted/50"
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              className="sr-only"
-                              value="yes"
-                              checked={field.value === "yes"}
-                              onChange={() => field.onChange("yes")}
-                            />
-                            <span>Yes, I'd like to donate</span>
-                          </label>
-                          <label
-                            className={`flex-1 flex items-center justify-center p-3 rounded-md border cursor-pointer transition-colors ${
-                              field.value === "no"
-                                ? "bg-primary/10 border-primary text-primary"
-                                : "bg-background border-input hover:bg-muted/50"
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              className="sr-only"
-                              value="no"
-                              checked={field.value === "no"}
-                              onChange={() => field.onChange("no")}
-                            />
-                            <span>No, not at this time</span>
-                          </label>
+                      <div className="border-2 border-primary/30 rounded-lg p-4 bg-primary/5 shadow-sm">
+                        <FormLabel className="text-lg font-medium flex items-center gap-2">
+                          <Heart className="h-5 w-5 text-red-500 fill-red-500" />
+                          <span>Support Our Service</span>
+                        </FormLabel>
+                        <FormDescription className="mt-1 mb-3 text-sm">
+                          Your donation helps us maintain and improve our assistance services. Donors receive priority
+                          scheduling and enhanced support.
+                        </FormDescription>
+                        <FormControl>
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <label
+                              className={`flex-1 flex items-center justify-center p-4 rounded-md border-2 cursor-pointer transition-all ${
+                                field.value === "yes"
+                                  ? "bg-primary/20 border-primary text-primary font-medium shadow-md scale-[1.02]"
+                                  : "bg-background border-input hover:bg-muted/50 hover:border-primary/50"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                className="sr-only"
+                                value="yes"
+                                checked={field.value === "yes"}
+                                onChange={() => field.onChange("yes")}
+                              />
+                              <Heart
+                                className={`mr-2 h-5 w-5 ${field.value === "yes" ? "text-red-500 fill-red-500" : ""}`}
+                              />
+                              <span>Yes, I'm willing to donate</span>
+                            </label>
+                            <label
+                              className={`flex-1 flex items-center justify-center p-4 rounded-md border-2 cursor-pointer transition-all ${
+                                field.value === "no"
+                                  ? "bg-muted border-muted-foreground/30 text-muted-foreground"
+                                  : "bg-background border-input hover:bg-muted/50"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                className="sr-only"
+                                value="no"
+                                checked={field.value === "no"}
+                                onChange={() => field.onChange("no")}
+                              />
+                              <span>No, I don't have intention to donate</span>
+                            </label>
+                          </div>
+                        </FormControl>
+                        <div className="mt-3 text-xs text-muted-foreground italic">
+                          Note: Donations are completely optional and you may still receive assistance.
                         </div>
-                      </FormControl>
-                      <FormDescription>
-                        Your donation helps us maintain and improve our assistance services
-                      </FormDescription>
-                      <FormMessage />
+                      </div>
                     </FormItem>
                   )}
                 />
@@ -1083,31 +1141,37 @@ export function BookingWizard() {
 
       {/* Donation Modal */}
       <Dialog open={showDonationModal} onOpenChange={(open) => !open && setShowDonationModal(false)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-yellow-500" />
-              <span>Hey Adventurer!</span>
+        <DialogContent className="w-full max-w-md overflow-hidden">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Heart className="h-5 w-5 text-red-500 fill-red-500" />
+              <span>Support Our Service</span>
             </DialogTitle>
-            <DialogDescription className="pt-4">
+          </DialogHeader>
+
+          <div className="py-2">
+            <p className="text-sm text-muted-foreground mb-4">
               We're happy to offer free help to everyone—but to keep things running smoothly, we give priority
               assistance to those who support us through donations.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-md text-sm">
-            <p>
-              Would you like to consider supporting us with a donation? No pressure—you don't need to donate until your
-              requested assistance has been scheduled and confirmed.
             </p>
+
+            <div className="bg-primary/5 border border-primary/20 rounded-md p-3">
+              <p className="text-sm break-words">
+                Would you like to consider supporting us with a donation? No pressure—you don't need to donate until
+                your requested assistance has been scheduled and confirmed.
+              </p>
+            </div>
           </div>
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+
+          <div className="flex flex-col sm:flex-row gap-2 pt-4">
             <Button variant="outline" onClick={handleDonationModalCancel} className="sm:flex-1">
+              <Heart className="mr-2 h-4 w-4 text-red-500" />
               Yes, I'll donate
             </Button>
             <Button onClick={handleDonationModalConfirm} className="sm:flex-1">
               Continue without donating
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </Card>

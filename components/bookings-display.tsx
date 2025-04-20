@@ -6,12 +6,19 @@ import { Loader2, CalendarClock, Copy, Check, ArrowRight } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { getBookings } from "@/actions/assistance"
+import { getUnreadCommentsCounts } from "@/actions/comments"
+import { useSession } from "next-auth/react"
 import type { Booking } from "@/models/assistance"
+import { NotificationBadge } from "@/components/notification-badge"
 
 export function BookingsDisplay() {
+  const { data: session } = useSession()
+  const isAdmin = session?.user?.role === "admin"
+
   const [bookings, setBookings] = useState<Booking[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
 
   // Update the state to track copied fields
   const [copiedRequestNumber, setCopiedRequestNumber] = useState<string | null>(null)
@@ -23,6 +30,13 @@ export function BookingsDisplay() {
       try {
         const data = await getBookings()
         setBookings(data)
+
+        // Get unread comments counts
+        if (data.length > 0) {
+          const requestIds = data.map((booking) => booking._id?.toString() || "").filter((id) => id)
+          const counts = await getUnreadCommentsCounts(requestIds, !!isAdmin)
+          setUnreadCounts(counts)
+        }
       } catch (err) {
         console.error("Error loading bookings:", err)
         setError("Failed to load assistance requests")
@@ -32,7 +46,7 @@ export function BookingsDisplay() {
     }
 
     loadBookings()
-  }, [])
+  }, [isAdmin])
 
   // Update the copy function to handle different field types
   const copyToClipboard = (text: string, type: "requestNumber" | "characterId" | "contactInfo") => {
@@ -50,13 +64,6 @@ export function BookingsDisplay() {
       setTimeout(() => setCopiedContactInfo(null), 2000)
     }
   }
-
-  // Replace the existing copyRequestNumber function with this new one
-  // const copyRequestNumber = (requestNumber: string) => {
-  //   navigator.clipboard.writeText(requestNumber)
-  //   setCopiedRequestNumber(requestNumber)
-  //   setTimeout(() => setCopiedRequestNumber(null), 2000)
-  // }
 
   if (isLoading) {
     return (
@@ -153,19 +160,29 @@ export function BookingsDisplay() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <code className="text-xs bg-muted px-2 py-1 rounded">{booking.requestNumber}</code>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => copyToClipboard(booking.requestNumber, "requestNumber")}
-                >
-                  {copiedRequestNumber === booking.requestNumber ? (
-                    <Check className="h-3 w-3" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex items-center gap-1">
+                  <code className="text-xs bg-muted px-2 py-1 rounded">{booking.requestNumber}</code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => copyToClipboard(booking.requestNumber, "requestNumber")}
+                  >
+                    {copiedRequestNumber === booking.requestNumber ? (
+                      <Check className="h-3 w-3" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
+                <Button variant="outline" size="sm" asChild className="mt-1 relative">
+                  <Link href={`/request/${booking._id}`}>
+                    View Details
+                    {unreadCounts[booking._id as string] > 0 && (
+                      <NotificationBadge count={unreadCounts[booking._id as string]} size="sm" className="ml-2" />
+                    )}
+                  </Link>
                 </Button>
               </div>
             </div>

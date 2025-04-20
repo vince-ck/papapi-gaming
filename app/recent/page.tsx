@@ -27,6 +27,11 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import Link from "next/link"
 import { Users, Heart, Calendar } from "lucide-react"
 
+// Add these imports at the top
+import { getUnreadCommentsCounts } from "@/actions/comments"
+import { NotificationBadge } from "@/components/notification-badge"
+import { useSession } from "next-auth/react"
+
 export default function RecentPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -37,11 +42,24 @@ export default function RecentPage() {
   const [copiedCharacterId, setCopiedCharacterId] = useState<string | null>(null)
   const [copiedContactInfo, setCopiedContactInfo] = useState<string | null>(null)
 
+  // Add this after the other state declarations
+  const { data: session } = useSession()
+  const isAdmin = session?.user?.role === "admin"
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+
+  // Update the existing loadBookings function inside the useEffect
   useEffect(() => {
     const loadBookings = async () => {
       try {
         const data = await getBookings()
         setBookings(data)
+
+        // Get unread comments counts
+        if (data.length > 0) {
+          const requestIds = data.map((booking) => booking._id?.toString() || "").filter((id) => id)
+          const counts = await getUnreadCommentsCounts(requestIds, !!isAdmin)
+          setUnreadCounts(counts)
+        }
       } catch (err) {
         console.error("Error loading bookings:", err)
         setError("Failed to load assistance requests")
@@ -51,7 +69,7 @@ export default function RecentPage() {
     }
 
     loadBookings()
-  }, [])
+  }, [isAdmin])
 
   // Update the copy function to handle different field types
   const copyToClipboard = (text: string, type: "requestNumber" | "characterId" | "contactInfo") => {
@@ -180,8 +198,8 @@ export default function RecentPage() {
         <div className="container mx-auto py-8 px-4 md:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">Recent Assistance Requests</h1>
-              <p className="text-muted-foreground">View all your assistance requests and their status</p>
+              <h1 className="text-3xl font-bold tracking-tight">Recent Transactions</h1>
+              <p className="text-muted-foreground">View all your transactions</p>
             </div>
             <Button variant="outline" asChild>
               <Link href="/games/ragnarok-m-classic">
@@ -275,7 +293,23 @@ export default function RecentPage() {
                             </p>
                           )}
                         </div>
-                        {getStatusBadge(booking.status)}
+                        <div className="flex flex-col items-end gap-2">
+                          {getStatusBadge(booking.status)}
+                          {/* Update the Button with the Link to include notification badge */}
+                          {/* Replace the existing Button with: */}
+                          <Button variant="outline" size="sm" asChild className="mt-2">
+                            <Link href={`/request/${booking._id}`} className="flex items-center">
+                              View Details
+                              {unreadCounts[booking._id as string] > 0 && (
+                                <NotificationBadge
+                                  count={unreadCounts[booking._id as string]}
+                                  size="sm"
+                                  className="ml-2"
+                                />
+                              )}
+                            </Link>
+                          </Button>
+                        </div>
                       </div>
 
                       {/* Display schedule information */}
