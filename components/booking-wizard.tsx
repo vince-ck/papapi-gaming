@@ -573,6 +573,28 @@ export function BookingWizard() {
         const result = await createBooking(formData)
 
         if (result.success) {
+          // Save this booking to recent transactions in localStorage
+          try {
+            // Get existing recent bookings
+            const recentBookingsJson = localStorage.getItem("papapi-recent-bookings") || "[]"
+            const recentBookings = JSON.parse(recentBookingsJson)
+
+            // Add the new booking to the beginning of the array
+            const updatedBookings = [result.booking, ...recentBookings]
+
+            // Remove duplicates based on _id
+            const uniqueBookings = updatedBookings.filter(
+              (booking, index, self) => index === self.findIndex((b) => b._id === booking._id),
+            )
+
+            // Save back to localStorage
+            localStorage.setItem("papapi-recent-bookings", JSON.stringify(uniqueBookings.slice(0, 10))) // Keep only 10 most recent
+          } catch (error) {
+            console.error("Error saving booking to recent transactions:", error)
+            // Continue even if this fails
+          }
+
+          // Continue with existing code...
           // Set the request number and booking ID
           if (result.requestNumber) {
             setRequestNumber(result.requestNumber)
@@ -1221,6 +1243,7 @@ export function BookingWizard() {
             onNext={handleNext}
             onPrevious={handlePrevious}
             onSubmit={handleSubmit}
+            className="animate-in fade-in duration-500"
           >
             {getCurrentStepContent()}
           </FormWizard>

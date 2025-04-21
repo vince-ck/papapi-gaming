@@ -14,11 +14,12 @@ import {
   ArrowLeft,
   Edit,
   AlertTriangle,
+  Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { getBookingById, cancelBooking } from "@/actions/request-details"
+import { getBookingById, cancelBooking, deleteBooking } from "@/actions/request-details"
 import type { Booking } from "@/models/assistance"
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import Link from "next/link"
@@ -43,7 +44,9 @@ export default function RequestDetailsPage() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [isEditMode, setIsEditMode] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
 
@@ -116,7 +119,12 @@ export default function RequestDetailsPage() {
       if (result.success) {
         setMessage({ type: "success", text: result.message })
         // Update the booking status locally
-        setBooking((prev) => (prev ? { ...prev, status: "cancelled" } : null))
+        const updatedBooking = { ...booking, status: "cancelled" }
+        setBooking(updatedBooking)
+
+        // Update the booking in localStorage
+        updateBookingInLocalStorage(updatedBooking)
+
         setShowCancelDialog(false)
 
         // Redirect after a short delay
@@ -131,6 +139,67 @@ export default function RequestDetailsPage() {
       setMessage({ type: "error", text: "An unexpected error occurred" })
     } finally {
       setIsCancelling(false)
+    }
+  }
+
+  // Update booking in localStorage when status changes
+  const updateBookingInLocalStorage = (updatedBooking: Booking) => {
+    try {
+      const recentBookingsJson = localStorage.getItem("papapi-recent-bookings")
+      if (recentBookingsJson) {
+        const recentBookings = JSON.parse(recentBookingsJson)
+
+        // Update the booking in the array
+        const updatedBookings = recentBookings.map((booking: Booking) =>
+          booking._id === updatedBooking._id ? updatedBooking : booking,
+        )
+
+        // Save back to localStorage
+        localStorage.setItem("papapi-recent-bookings", JSON.stringify(updatedBookings))
+      }
+    } catch (error) {
+      console.error("Error updating booking in localStorage:", error)
+    }
+  }
+
+  // Handle booking deletion
+  const handleDeleteBooking = async () => {
+    if (!booking || !id) return
+
+    setIsDeleting(true)
+    setMessage(null)
+
+    try {
+      const result = await deleteBooking(id)
+
+      if (result.success) {
+        setMessage({ type: "success", text: result.message })
+        setShowDeleteDialog(false)
+
+        // Remove the booking from localStorage
+        try {
+          const recentBookingsJson = localStorage.getItem("papapi-recent-bookings")
+          if (recentBookingsJson) {
+            const recentBookings = JSON.parse(recentBookingsJson)
+            const updatedBookings = recentBookings.filter((b: any) => b._id !== id)
+            localStorage.setItem("papapi-recent-bookings", JSON.stringify(updatedBookings))
+          }
+        } catch (error) {
+          console.error("Error updating localStorage:", error)
+        }
+
+        // Redirect after a short delay
+        setTimeout(() => {
+          router.push("/recent")
+        }, 2000)
+      } else {
+        setMessage({ type: "error", text: result.message })
+      }
+    } catch (error) {
+      console.error("Error deleting booking:", error)
+      setMessage({ type: "error", text: "An unexpected error occurred" })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -247,6 +316,9 @@ export default function RequestDetailsPage() {
   // Check if booking can be cancelled (only pending or confirmed bookings can be cancelled)
   const canCancel = booking && (booking.status === "pending" || booking.status === "confirmed")
 
+  // Check if booking can be deleted (only cancelled bookings can be deleted)
+  const canDelete = booking && booking.status === "cancelled"
+
   return (
     <div className="w-full px-4 py-8 md:px-6 lg:px-8">
       <div className="flex items-center justify-between mb-6">
@@ -322,6 +394,12 @@ export default function RequestDetailsPage() {
                   <Button variant="destructive" className="gap-2" onClick={() => setShowCancelDialog(true)}>
                     <XCircle className="h-4 w-4" />
                     Cancel Request
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button variant="destructive" className="gap-2" onClick={() => setShowDeleteDialog(true)}>
+                    <Trash2 className="h-4 w-4" />
+                    Delete Request
                   </Button>
                 )}
               </div>
@@ -470,6 +548,31 @@ export default function RequestDetailsPage() {
                 </>
               ) : (
                 "Cancel Request"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogTitle>Delete Request</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to permanently delete this cancelled request? This action cannot be undone.
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)} disabled={isDeleting}>
+              Keep Request
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteBooking} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Request"
               )}
             </Button>
           </DialogFooter>

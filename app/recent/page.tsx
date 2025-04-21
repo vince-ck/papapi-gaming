@@ -15,26 +15,38 @@ import {
   Copy,
   Check,
   ArrowLeft,
+  Search,
+  X,
+  Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getBookings } from "@/actions/assistance"
 import type { Booking } from "@/models/assistance"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import Link from "next/link"
 import { Users, Heart, Calendar } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 // Add these imports at the top
 import { getUnreadCommentsCounts } from "@/actions/comments"
 import { NotificationBadge } from "@/components/notification-badge"
 import { useSession } from "next-auth/react"
+import { getBookingById, deleteBooking } from "@/actions/request-details"
 
 export default function RecentPage() {
-  const [bookings, setBookings] = useState<Booking[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [displayedBookings, setDisplayedBookings] = useState<Booking[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [bookingToDelete, setBookingToDelete] = useState<Booking | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
   // Update the state to track copied fields
   const [copiedRequestNumber, setCopiedRequestNumber] = useState<string | null>(null)
   const [copiedCharacterId, setCopiedCharacterId] = useState<string | null>(null)
@@ -45,29 +57,216 @@ export default function RecentPage() {
   const isAdmin = session?.user?.role === "admin"
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
 
-  // Update the existing loadBookings function inside the useEffect
-  useEffect(() => {
-    const loadBookings = async () => {
-      try {
-        const data = await getBookings()
-        setBookings(data)
+  // Add search state
+  const [searchTerm, setSearchTerm] = useState<string>("")
 
-        // Get unread comments counts
-        if (data.length > 0) {
-          const requestIds = data.map((booking) => booking._id?.toString() || "").filter((id) => id)
+  // Load recent bookings from localStorage and refresh from server
+  const loadRecentBookings = async () => {
+    try {
+      // First load from localStorage for immediate display
+      const recentBookingsJson = localStorage.getItem("papapi-recent-bookings")
+      let localBookings: Booking[] = []
+
+      if (recentBookingsJson) {
+        localBookings = JSON.parse(recentBookingsJson)
+        if (Array.isArray(localBookings)) {
+          setDisplayedBookings(localBookings)
+        }
+      }
+
+      // Then fetch fresh data for any bookings we have in localStorage
+      if (localBookings.length > 0) {
+        setIsLoading(true)
+
+        // Extract IDs from local bookings
+        const bookingIds = localBookings.map((booking) => booking._id?.toString()).filter((id) => id) as string[]
+
+        // Fetch fresh data for each booking
+        const refreshedBookings = await Promise.all(
+          bookingIds.map(async (id) => {
+            try {
+              const freshBooking = await getBookingById(id)
+              return freshBooking
+            } catch (error) {
+              console.error(`Error refreshing booking ${id}:`, error)
+              return null
+            }
+          }),
+        )
+
+        // Filter out null results and update displayed bookings
+        const validBookings = refreshedBookings.filter((booking) => booking !== null) as Booking[]
+
+        if (validBookings.length > 0) {
+          // Update displayed bookings with fresh data
+          setDisplayedBookings(validBookings)
+
+          // Update localStorage with fresh data
+          localStorage.setItem("papapi-recent-bookings", JSON.stringify(validBookings))
+        }
+
+        // Get unread comments counts for these bookings
+        const requestIds = validBookings.map((booking) => booking._id?.toString() || "").filter((id) => id)
+        if (requestIds.length > 0) {
           const counts = await getUnreadCommentsCounts(requestIds, !!isAdmin)
           setUnreadCounts(counts)
         }
-      } catch (err) {
-        console.error("Error loading bookings:", err)
-        setError("Failed to load assistance requests")
-      } finally {
-        setIsLoading(false)
       }
+    } catch (error) {
+      console.error("Error loading recent bookings:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadRecentBookings()
+  }, [isAdmin])
+
+  // Update the handleSearch function to add the found booking to recent transactions
+  const handleSearch = async () => {
+    if (!searchTerm.trim()) {
+      return
     }
 
-    loadBookings()
-  }, [isAdmin])
+    setIsSearching(true)
+    setError(null)
+
+    try {
+      // Get all bookings
+      const allBookings = await getBookings()
+
+      // Filter bookings by exact request number match (case insensitive)
+      const matchingBookings = allBookings.filter(
+        (booking) => booking.requestNumber?.toLowerCase() === searchTerm.toLowerCase(),
+      )
+
+      if (matchingBookings.length > 0) {
+        // Add the matching booking to displayed bookings without duplicates
+        setDisplayedBookings((prevBookings) => {
+          // Combine existing bookings with new matching bookings
+          const combinedBookings = [...prevBookings]
+
+          // Add each matching booking if it's not already in the list
+          matchingBookings.forEach((newBooking) => {
+            const isDuplicate = combinedBookings.some((existingBooking) => existingBooking._id === newBooking._id)
+
+            if (!isDuplicate) {
+              combinedBookings.unshift(newBooking) // Add to beginning of array
+            }
+          })
+
+          // Save to localStorage
+          localStorage.setItem("papapi-recent-bookings", JSON.stringify(combinedBookings))
+
+          return combinedBookings
+        })
+
+        // Get unread comments counts for the updated list
+        const requestIds = matchingBookings.map((booking) => booking._id?.toString() || "").filter((id) => id)
+
+        if (requestIds.length > 0) {
+          const counts = await getUnreadCommentsCounts(requestIds, !!isAdmin)
+          setUnreadCounts((prevCounts) => ({ ...prevCounts, ...counts }))
+        }
+      } else {
+        setError(`No request found matching "${searchTerm}"`)
+      }
+    } catch (err) {
+      console.error("Error searching for bookings:", err)
+      setError("Failed to search for assistance requests")
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchTerm("")
+    setError(null)
+  }
+
+  // Add a booking to recent transactions (to be called from other components)
+  const addBookingToRecent = (booking: Booking) => {
+    setDisplayedBookings((prevBookings) => {
+      // Check if booking already exists
+      const isDuplicate = prevBookings.some((existingBooking) => existingBooking._id === booking._id)
+
+      if (isDuplicate) {
+        return prevBookings
+      }
+
+      // Add new booking to the beginning of the list
+      const updatedBookings = [booking, ...prevBookings]
+
+      // Save to localStorage
+      localStorage.setItem("papapi-recent-bookings", JSON.stringify(updatedBookings.slice(0, 50)))
+
+      return updatedBookings
+    })
+  }
+
+  // Handle direct request lookup by ID
+  const handleRequestLookup = async (requestId: string) => {
+    if (!requestId.trim()) {
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const booking = await getBookingById(requestId)
+
+      if (booking) {
+        // Add the booking to displayed bookings without duplicates
+        addBookingToRecent(booking)
+      } else {
+        setError(`No request found with ID "${requestId}"`)
+      }
+    } catch (err) {
+      console.error("Error looking up booking:", err)
+      setError("Failed to look up assistance request")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handle booking deletion
+  const handleDeleteBooking = async () => {
+    if (!bookingToDelete || !bookingToDelete._id) return
+
+    setIsDeleting(true)
+    setMessage(null)
+
+    try {
+      const result = await deleteBooking(bookingToDelete._id.toString())
+
+      if (result.success) {
+        setMessage({ type: "success", text: result.message })
+
+        // Remove the booking from the displayed list
+        setDisplayedBookings((prevBookings) => {
+          const updatedBookings = prevBookings.filter((booking) => booking._id !== bookingToDelete._id)
+
+          // Update localStorage
+          localStorage.setItem("papapi-recent-bookings", JSON.stringify(updatedBookings))
+
+          return updatedBookings
+        })
+
+        setShowDeleteDialog(false)
+      } else {
+        setMessage({ type: "error", text: result.message })
+      }
+    } catch (error) {
+      console.error("Error deleting booking:", error)
+      setMessage({ type: "error", text: "An unexpected error occurred" })
+    } finally {
+      setIsDeleting(false)
+      setBookingToDelete(null)
+    }
+  }
 
   // Update the copy function to handle different field types
   const copyToClipboard = (text: string, type: "requestNumber" | "characterId" | "contactInfo") => {
@@ -184,8 +383,8 @@ export default function RecentPage() {
     <div className="w-full px-4 py-8 md:px-6 lg:px-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Recent Transactions</h1>
-          <p className="text-muted-foreground">View all your transactions</p>
+          <h1 className="text-3xl font-bold tracking-tight">Track Your Request</h1>
+          <p className="text-muted-foreground">Stay updated on your assistance booking</p>
         </div>
         <Button variant="outline" asChild>
           <Link href="/games/ragnarok-m-classic">
@@ -195,20 +394,63 @@ export default function RecentPage() {
         </Button>
       </div>
 
+      {message && (
+        <Alert variant={message.type === "success" ? "default" : "destructive"} className="mb-4">
+          <AlertDescription>{message.text}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Add search input */}
+      <div className="mb-6">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by exact request number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-10"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleSearch()
+                }
+              }}
+            />
+            {searchTerm && (
+              <button
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={clearSearch}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <Button onClick={handleSearch} disabled={isSearching || !searchTerm.trim()}>
+            {isSearching ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Searching...
+              </>
+            ) : (
+              "Search"
+            )}
+          </Button>
+        </div>
+        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+      </div>
+
       {isLoading ? (
         <div className="flex justify-center items-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-      ) : error ? (
-        <div className="text-center py-8">
-          <p className="text-destructive">{error}</p>
-        </div>
-      ) : bookings.length === 0 ? (
+      ) : displayedBookings.length === 0 ? (
         <Card>
           <CardContent className="text-center py-12">
             <CalendarClock className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <h3 className="text-xl font-medium mb-2">No Assistance Requests</h3>
-            <p className="text-muted-foreground mb-6">You haven't made any assistance requests yet</p>
+            <h3 className="text-xl font-medium mb-2">No Requests to Display</h3>
+            <p className="text-muted-foreground mb-6">
+              Search for a request by its number or create a new assistance request
+            </p>
             <Button asChild>
               <Link href="/games/ragnarok-m-classic">Request Assistance</Link>
             </Button>
@@ -216,7 +458,7 @@ export default function RecentPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {bookings.map((booking) => (
+          {displayedBookings.map((booking) => (
             <Card key={booking._id as string} className="overflow-hidden">
               <div className="flex border-l-4 border-primary">
                 <div className="flex items-center justify-center p-4 bg-primary/5">{getStatusIcon(booking.status)}</div>
@@ -279,14 +521,32 @@ export default function RecentPage() {
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       {getStatusBadge(booking.status)}
-                      <Button variant="outline" size="sm" asChild className="mt-2">
-                        <Link href={`/request/${booking._id}`} className="flex items-center">
-                          View Details
-                          {unreadCounts[booking._id as string] > 0 && (
-                            <NotificationBadge count={unreadCounts[booking._id as string]} size="sm" className="ml-2" />
-                          )}
-                        </Link>
-                      </Button>
+                      <div className="flex gap-2 mt-2">
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/request/${booking._id}`} className="flex items-center">
+                            View Details
+                            {unreadCounts[booking._id as string] > 0 && (
+                              <NotificationBadge
+                                count={unreadCounts[booking._id as string]}
+                                size="sm"
+                                className="ml-2"
+                              />
+                            )}
+                          </Link>
+                        </Button>
+                        {booking.status === "cancelled" && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                              setBookingToDelete(booking)
+                              setShowDeleteDialog(true)
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -388,6 +648,31 @@ export default function RecentPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogTitle>Delete Request</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to permanently delete this cancelled request? This action cannot be undone.
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)} disabled={isDeleting}>
+              Keep Request
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteBooking} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Request"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

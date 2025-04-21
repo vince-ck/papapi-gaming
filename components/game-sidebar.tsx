@@ -26,6 +26,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { signOut, useSession } from "next-auth/react"
 import { LoginModal } from "@/components/login-modal"
+import { cn } from "@/lib/utils"
 
 export function GameSidebar() {
   const [activeItem, setActiveItem] = useState("games")
@@ -152,18 +153,32 @@ export function GameSidebar() {
                 asChild
                 isActive={activeItem === item.id}
                 onClick={() => setActiveItem(item.id)}
-                className={activeItem === item.id ? "bg-muted/80 hover:bg-muted" : "hover:bg-muted/50"}
+                className={cn(
+                  activeItem === item.id
+                    ? "bg-muted/80 hover:bg-muted relative after:absolute after:left-0 after:top-1/2 after:-translate-y-1/2 after:h-3/5 after:w-0.5 after:bg-primary after:rounded-full after:animate-in after:fade-in after:slide-in-from-left-1"
+                    : "hover:bg-muted/50",
+                )}
               >
                 <Button variant="ghost" className="w-full justify-start" asChild={!!item.href}>
                   {item.href ? (
                     <Link href={item.href}>
-                      <item.icon className="mr-2 h-5 w-5" />
-                      <span>{item.label}</span>
+                      <item.icon
+                        className={cn(
+                          "mr-2 h-5 w-5 transition-transform duration-200",
+                          activeItem === item.id && "text-primary scale-110",
+                        )}
+                      />
+                      <span className={activeItem === item.id ? "font-medium" : ""}>{item.label}</span>
                     </Link>
                   ) : (
                     <>
-                      <item.icon className="mr-2 h-5 w-5" />
-                      <span>{item.label}</span>
+                      <item.icon
+                        className={cn(
+                          "mr-2 h-5 w-5 transition-transform duration-200",
+                          activeItem === item.id && "text-primary scale-110",
+                        )}
+                      />
+                      <span className={activeItem === item.id ? "font-medium" : ""}>{item.label}</span>
                     </>
                   )}
                 </Button>

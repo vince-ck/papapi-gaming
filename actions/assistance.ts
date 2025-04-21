@@ -230,7 +230,6 @@ export async function createBooking(formData: FormData): Promise<{
   }
 }
 
-// Get all bookings
 export async function getBookings(): Promise<Booking[]> {
   try {
     const client = await clientPromise
@@ -243,6 +242,31 @@ export async function getBookings(): Promise<Booking[]> {
   } catch (error) {
     console.error("Error fetching bookings:", error)
     throw new Error("Failed to fetch bookings")
+  }
+}
+
+// Add a new function to handle adding a booking to recent transactions
+export async function addBookingToRecent(booking: Booking): Promise<void> {
+  try {
+    // Get existing recent bookings
+    const recentBookingsJson = localStorage.getItem("papapi-recent-bookings") || "[]"
+    const recentBookings = JSON.parse(recentBookingsJson)
+
+    // Check if booking already exists
+    const isDuplicate = recentBookings.some((existingBooking: Booking) => existingBooking._id === booking._id)
+
+    if (!isDuplicate) {
+      // Add new booking to the beginning of the list
+      const updatedBookings = [booking, ...recentBookings]
+
+      // Keep only the 50 most recent bookings
+      const limitedBookings = updatedBookings.slice(0, 50)
+
+      // Save to localStorage
+      localStorage.setItem("papapi-recent-bookings", JSON.stringify(limitedBookings))
+    }
+  } catch (error) {
+    console.error("Error adding booking to recent transactions:", error)
   }
 }
 

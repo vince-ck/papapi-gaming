@@ -17,8 +17,6 @@ export const metadata: Metadata = {
   description: "Your ultimate gaming companion",
   icons: {
     icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
   },
     generator: 'v0.dev'
 }

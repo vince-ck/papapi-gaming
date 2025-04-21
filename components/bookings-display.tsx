@@ -5,7 +5,6 @@ import Link from "next/link"
 import { Loader2, CalendarClock, Copy, Check, ArrowRight } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { getBookings } from "@/actions/assistance"
 import { getUnreadCommentsCounts } from "@/actions/comments"
 import { useSession } from "next-auth/react"
 import type { Booking } from "@/models/assistance"
@@ -28,12 +27,20 @@ export function BookingsDisplay() {
   useEffect(() => {
     const loadBookings = async () => {
       try {
-        const data = await getBookings()
-        setBookings(data)
+        // First try to get bookings from localStorage for immediate display
+        const localBookingsJson = localStorage.getItem("papapi-recent-bookings")
+        let localBookings: Booking[] = []
+
+        if (localBookingsJson) {
+          localBookings = JSON.parse(localBookingsJson)
+          if (Array.isArray(localBookings)) {
+            setBookings(localBookings)
+          }
+        }
 
         // Get unread comments counts
-        if (data.length > 0) {
-          const requestIds = data.map((booking) => booking._id?.toString() || "").filter((id) => id)
+        if (localBookings.length > 0) {
+          const requestIds = localBookings.map((booking) => booking._id?.toString() || "").filter((id) => id)
           const counts = await getUnreadCommentsCounts(requestIds, !!isAdmin)
           setUnreadCounts(counts)
         }
@@ -118,10 +125,10 @@ export function BookingsDisplay() {
           {recentBookings.map((booking) => (
             <div
               key={booking._id as string}
-              className="flex items-center justify-between p-3 rounded-md border border-border/40 bg-card/50"
+              className="flex items-center justify-between p-3 rounded-md border border-border/40 bg-card/50 transition-all duration-300 hover:bg-card/80 hover:shadow-md hover:border-border/60 group"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 transition-transform duration-300 group-hover:scale-110">
                   <CalendarClock className="h-4 w-4 text-primary" />
                 </div>
                 <div>
@@ -131,7 +138,7 @@ export function BookingsDisplay() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-4 w-4 ml-1"
+                      className="h-4 w-4 ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                       onClick={() => copyToClipboard(booking.characterId, "characterId")}
                     >
                       {copiedCharacterId === booking.characterId ? (
@@ -147,7 +154,7 @@ export function BookingsDisplay() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-4 w-4"
+                        className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                         onClick={() => copyToClipboard(booking.contactInfo, "contactInfo")}
                       >
                         {copiedContactInfo === booking.contactInfo ? (
@@ -166,7 +173,7 @@ export function BookingsDisplay() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                     onClick={() => copyToClipboard(booking.requestNumber, "requestNumber")}
                   >
                     {copiedRequestNumber === booking.requestNumber ? (
@@ -176,7 +183,12 @@ export function BookingsDisplay() {
                     )}
                   </Button>
                 </div>
-                <Button variant="outline" size="sm" asChild className="mt-1 relative">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="mt-1 relative transition-all duration-300 group-hover:bg-primary/10 group-hover:text-primary"
+                >
                   <Link href={`/request/${booking._id}`}>
                     View Details
                     {unreadCounts[booking._id as string] > 0 && (

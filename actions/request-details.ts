@@ -38,6 +38,46 @@ export async function getBookingById(id: string): Promise<Booking | null> {
   }
 }
 
+// Get multiple bookings by their IDs
+export async function getBookingsByIds(ids: string[]): Promise<Booking[]> {
+  try {
+    if (!ids || ids.length === 0) {
+      return []
+    }
+
+    const client = await clientPromise
+    const db = client.db()
+
+    // Convert string IDs to ObjectIds
+    const objectIds = ids
+      .map((id) => {
+        try {
+          return new ObjectId(id)
+        } catch (error) {
+          console.error(`Invalid ObjectId: ${id}`, error)
+          return null
+        }
+      })
+      .filter((id) => id !== null) as ObjectId[]
+
+    if (objectIds.length === 0) {
+      return []
+    }
+
+    // Query for all bookings with the given IDs
+    const bookings = await db
+      .collection(BOOKINGS_COLLECTION)
+      .find({ _id: { $in: objectIds } })
+      .toArray()
+
+    // Convert to plain objects to ensure no ObjectId instances are returned
+    return JSON.parse(JSON.stringify(bookings))
+  } catch (error) {
+    console.error("Error fetching bookings by IDs:", error)
+    return []
+  }
+}
+
 // Update a booking
 export async function updateBooking(
   id: string,
@@ -184,6 +224,57 @@ export async function cancelBooking(id: string): Promise<{ success: boolean; mes
   } catch (error) {
     console.error("Error cancelling booking:", error)
     return { success: false, message: "Failed to cancel booking" }
+  } finally {
+    revalidatePath("/request/[id]")
+    revalidatePath("/games/ragnarok-m-classic")
+    revalidatePath("/recent")
+  }
+}
+
+// Delete a booking (only allowed for cancelled bookings)
+export async function deleteBooking(id: string): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!id || id.trim() === "") {
+      return { success: false, message: "Invalid booking ID" }
+    }
+
+    const client = await clientPromise
+    const db = client.db()
+
+    let objectId: ObjectId
+    try {
+      objectId = new ObjectId(id)
+    } catch (error) {
+      console.error("Invalid ObjectId:", error)
+      return { success: false, message: "Invalid booking ID format" }
+    }
+
+    // Get the current booking to check its status
+    const currentBooking = await db.collection(BOOKINGS_COLLECTION).findOne({ _id: objectId })
+
+    if (!currentBooking) {
+      return { success: false, message: "Booking not found" }
+    }
+
+    // Only allow deletion if the booking is in cancelled status
+    if (currentBooking.status !== "cancelled") {
+      return {
+        success: false,
+        message: `Cannot delete booking with status "${currentBooking.status}". Only cancelled bookings can be deleted.`,
+      }
+    }
+
+    // Delete the booking
+    const result = await db.collection(BOOKINGS_COLLECTION).deleteOne({ _id: objectId })
+
+    if (result.deletedCount === 0) {
+      return { success: false, message: "Failed to delete booking" }
+    }
+
+    return { success: true, message: "Booking deleted successfully" }
+  } catch (error) {
+    console.error("Error deleting booking:", error)
+    return { success: false, message: "Failed to delete booking" }
   } finally {
     revalidatePath("/request/[id]")
     revalidatePath("/games/ragnarok-m-classic")

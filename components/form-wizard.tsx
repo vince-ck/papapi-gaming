@@ -60,8 +60,8 @@ export function FormWizard({
                 <button
                   type="button"
                   className={cn(
-                    "flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition-colors",
-                    isActive && "border-2 border-primary bg-background text-primary",
+                    "flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition-all duration-300",
+                    isActive && "border-2 border-primary bg-background text-primary scale-110 shadow-sm",
                     isCompleted && "bg-primary text-primary-foreground",
                     !isActive && !isCompleted && "bg-muted text-muted-foreground",
                   )}
@@ -73,11 +73,11 @@ export function FormWizard({
                   }}
                   disabled={!isCompleted && !isActive}
                 >
-                  {isCompleted ? <Check className="h-5 w-5" /> : index + 1}
+                  {isCompleted ? <Check className="h-5 w-5 animate-in fade-in zoom-in duration-300" /> : index + 1}
                 </button>
                 <span
                   className={cn(
-                    "mt-2 text-center text-sm font-medium",
+                    "mt-2 text-center text-sm font-medium transition-colors duration-300",
                     isActive && "text-primary",
                     isCompleted && "text-primary",
                     !isActive && !isCompleted && "text-muted-foreground",
