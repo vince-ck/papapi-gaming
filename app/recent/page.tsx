@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
 import Image from "next/image"
-import { GameSidebar } from "@/components/game-sidebar"
-import { MobileNav } from "@/components/mobile-nav"
 import {
   Loader2,
   CalendarClock,
@@ -87,13 +85,6 @@ export default function RecentPage() {
       setTimeout(() => setCopiedContactInfo(null), 2000)
     }
   }
-
-  // Replace the existing copyRequestNumber function with this new one
-  // const copyRequestNumber = (requestNumber: string) => {
-  //   navigator.clipboard.writeText(requestNumber)
-  //   setCopiedRequestNumber(requestNumber)
-  //   setTimeout(() => setCopiedRequestNumber(null), 2000)
-  // }
 
   // Status badge styling
   const getStatusBadge = (status: string) => {
@@ -190,230 +181,213 @@ export default function RecentPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
-      <GameSidebar />
-      <div className="flex flex-1 flex-col">
-        <MobileNav />
+    <div className="w-full px-4 py-8 md:px-6 lg:px-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Recent Transactions</h1>
+          <p className="text-muted-foreground">View all your transactions</p>
+        </div>
+        <Button variant="outline" asChild>
+          <Link href="/games/ragnarok-m-classic">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Game
+          </Link>
+        </Button>
+      </div>
 
-        <div className="container mx-auto py-8 px-4 md:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Recent Transactions</h1>
-              <p className="text-muted-foreground">View all your transactions</p>
-            </div>
-            <Button variant="outline" asChild>
-              <Link href="/games/ragnarok-m-classic">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Game
-              </Link>
+      {isLoading ? (
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : error ? (
+        <div className="text-center py-8">
+          <p className="text-destructive">{error}</p>
+        </div>
+      ) : bookings.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-12">
+            <CalendarClock className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <h3 className="text-xl font-medium mb-2">No Assistance Requests</h3>
+            <p className="text-muted-foreground mb-6">You haven't made any assistance requests yet</p>
+            <Button asChild>
+              <Link href="/games/ragnarok-m-classic">Request Assistance</Link>
             </Button>
-          </div>
-
-          {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : error ? (
-            <div className="text-center py-8">
-              <p className="text-destructive">{error}</p>
-            </div>
-          ) : bookings.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <CalendarClock className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <h3 className="text-xl font-medium mb-2">No Assistance Requests</h3>
-                <p className="text-muted-foreground mb-6">You haven't made any assistance requests yet</p>
-                <Button asChild>
-                  <Link href="/games/ragnarok-m-classic">Request Assistance</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {bookings.map((booking) => (
-                <Card key={booking._id as string} className="overflow-hidden">
-                  <div className="flex border-l-4 border-primary">
-                    <div className="flex items-center justify-center p-4 bg-primary/5">
-                      {getStatusIcon(booking.status)}
-                    </div>
-                    <CardContent className="p-4 flex-1">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="font-medium">{booking.assistanceTypeName}</h4>
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1">
-                              <p className="text-sm text-muted-foreground">Character ID: {booking.characterId}</p>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5"
-                                onClick={() => copyToClipboard(booking.characterId, "characterId")}
-                              >
-                                {copiedCharacterId === booking.characterId ? (
-                                  <Check className="h-3 w-3" />
-                                ) : (
-                                  <Copy className="h-3 w-3" />
-                                )}
-                              </Button>
-                            </div>
-                            {booking.requestNumber && (
-                              <div className="flex items-center gap-1">
-                                <code className="text-xs bg-muted px-1 py-0.5 rounded">{booking.requestNumber}</code>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5"
-                                  onClick={() => copyToClipboard(booking.requestNumber, "requestNumber")}
-                                >
-                                  {copiedRequestNumber === booking.requestNumber ? (
-                                    <Check className="h-3 w-3" />
-                                  ) : (
-                                    <Copy className="h-3 w-3" />
-                                  )}
-                                </Button>
-                              </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {bookings.map((booking) => (
+            <Card key={booking._id as string} className="overflow-hidden">
+              <div className="flex border-l-4 border-primary">
+                <div className="flex items-center justify-center p-4 bg-primary/5">{getStatusIcon(booking.status)}</div>
+                <CardContent className="p-4 flex-1">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-medium">{booking.assistanceTypeName}</h4>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <p className="text-sm text-muted-foreground">Character ID: {booking.characterId}</p>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => copyToClipboard(booking.characterId, "characterId")}
+                          >
+                            {copiedCharacterId === booking.characterId ? (
+                              <Check className="h-3 w-3" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
                             )}
-                          </div>
-                          {booking.contactInfo && (
-                            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                              <Mail className="h-3.5 w-3.5" />
-                              <span>{booking.contactInfo}</span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5"
-                                onClick={() => copyToClipboard(booking.contactInfo, "contactInfo")}
-                              >
-                                {copiedContactInfo === booking.contactInfo ? (
-                                  <Check className="h-3 w-3" />
-                                ) : (
-                                  <Copy className="h-3 w-3" />
-                                )}
-                              </Button>
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          {getStatusBadge(booking.status)}
-                          {/* Update the Button with the Link to include notification badge */}
-                          {/* Replace the existing Button with: */}
-                          <Button variant="outline" size="sm" asChild className="mt-2">
-                            <Link href={`/request/${booking._id}`} className="flex items-center">
-                              View Details
-                              {unreadCounts[booking._id as string] > 0 && (
-                                <NotificationBadge
-                                  count={unreadCounts[booking._id as string]}
-                                  size="sm"
-                                  className="ml-2"
-                                />
-                              )}
-                            </Link>
                           </Button>
                         </div>
-                      </div>
-
-                      {/* Display schedule information */}
-                      <div className="mt-2 text-sm">
-                        {booking.selectedDays &&
-                        Array.isArray(booking.selectedDays) &&
-                        booking.selectedDays.length > 0 ? (
-                          <div className="flex flex-col gap-1">
-                            <p className="flex items-center gap-1">
-                              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span>{formatSelectedDays(booking.selectedDays)}</span>
-                            </p>
-                            <p className="flex items-center gap-1">
-                              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span>
-                                {booking.timeRangePreset === "custom"
-                                  ? `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`
-                                  : getTimeRangeLabel(booking.timeRangePreset)}
-                              </span>
-                            </p>
+                        {booking.requestNumber && (
+                          <div className="flex items-center gap-1">
+                            <code className="text-xs bg-muted px-1 py-0.5 rounded">{booking.requestNumber}</code>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5"
+                              onClick={() => copyToClipboard(booking.requestNumber, "requestNumber")}
+                            >
+                              {copiedRequestNumber === booking.requestNumber ? (
+                                <Check className="h-3 w-3" />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                            </Button>
                           </div>
-                        ) : (
-                          <p className="flex items-center gap-1">
-                            <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span>
-                              {format(new Date(booking.startDate || booking.startDateTime), "PPP p")} -{" "}
-                              {format(new Date(booking.endDate || booking.endDateTime), "p")}
-                            </span>
-                          </p>
-                        )}
-
-                        {/* Display slots and donation info if available */}
-                        {booking.slots && (
-                          <p className="flex items-center gap-1 mt-1">
-                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span>
-                              {booking.slots} {booking.slots === 1 ? "slot" : "slots"}
-                            </span>
-                          </p>
-                        )}
-
-                        {booking.willingToDonate && (
-                          <p className="flex items-center gap-1 mt-1">
-                            <Heart
-                              className={`h-3.5 w-3.5 ${booking.willingToDonate === "yes" ? "text-red-500" : "text-muted-foreground"}`}
-                            />
-                            <span>Willing to donate: {booking.willingToDonate === "yes" ? "Yes" : "No"}</span>
-                          </p>
                         )}
                       </div>
-
-                      {booking.additionalInfo && (
-                        <div className="mt-2 text-sm border-t border-border/40 pt-2">
-                          <p className="flex items-start gap-1">
-                            <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground" />
-                            <span>{booking.additionalInfo}</span>
-                          </p>
-                        </div>
+                      {booking.contactInfo && (
+                        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                          <Mail className="h-3.5 w-3.5" />
+                          <span>{booking.contactInfo}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => copyToClipboard(booking.contactInfo, "contactInfo")}
+                          >
+                            {copiedContactInfo === booking.contactInfo ? (
+                              <Check className="h-3 w-3" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </p>
                       )}
-
-                      {booking.photoUrls && Array.isArray(booking.photoUrls) && booking.photoUrls.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-border/40">
-                          <div className="flex items-center gap-1 mb-2 text-sm text-muted-foreground">
-                            <ImageIcon className="h-3.5 w-3.5" />
-                            <span>Attached Photos:</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            {booking.photoUrls.map((url, index) => (
-                              <div
-                                key={index}
-                                className="relative h-16 rounded-md overflow-hidden border border-border cursor-pointer"
-                                onClick={() => setSelectedImage(url)}
-                              >
-                                <Image
-                                  src={url || "/placeholder.svg"}
-                                  alt={`Photo ${index + 1}`}
-                                  fill
-                                  className="object-cover"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      {getStatusBadge(booking.status)}
+                      <Button variant="outline" size="sm" asChild className="mt-2">
+                        <Link href={`/request/${booking._id}`} className="flex items-center">
+                          View Details
+                          {unreadCounts[booking._id as string] > 0 && (
+                            <NotificationBadge count={unreadCounts[booking._id as string]} size="sm" className="ml-2" />
+                          )}
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Image Preview Dialog */}
-        {selectedImage && (
-          <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
-            <DialogContent className="max-w-3xl">
-              <DialogTitle>Photo Preview</DialogTitle>
-              <div className="relative w-full h-[60vh]">
-                <Image src={selectedImage || "/placeholder.svg"} alt="Photo preview" fill className="object-contain" />
+                  {/* Display schedule information */}
+                  <div className="mt-2 text-sm">
+                    {booking.selectedDays && Array.isArray(booking.selectedDays) && booking.selectedDays.length > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        <p className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span>{formatSelectedDays(booking.selectedDays)}</span>
+                        </p>
+                        <p className="flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span>
+                            {booking.timeRangePreset === "custom"
+                              ? `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`
+                              : getTimeRangeLabel(booking.timeRangePreset)}
+                          </span>
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="flex items-center gap-1">
+                        <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>
+                          {format(new Date(booking.startDate || booking.startDateTime), "PPP p")} -{" "}
+                          {format(new Date(booking.endDate || booking.endDateTime), "p")}
+                        </span>
+                      </p>
+                    )}
+
+                    {/* Display slots and donation info if available */}
+                    {booking.slots && (
+                      <p className="flex items-center gap-1 mt-1">
+                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>
+                          {booking.slots} {booking.slots === 1 ? "slot" : "slots"}
+                        </span>
+                      </p>
+                    )}
+
+                    {booking.willingToDonate && (
+                      <p className="flex items-center gap-1 mt-1">
+                        <Heart
+                          className={`h-3.5 w-3.5 ${booking.willingToDonate === "yes" ? "text-red-500" : "text-muted-foreground"}`}
+                        />
+                        <span>Willing to donate: {booking.willingToDonate === "yes" ? "Yes" : "No"}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {booking.additionalInfo && (
+                    <div className="mt-2 text-sm border-t border-border/40 pt-2">
+                      <p className="flex items-start gap-1">
+                        <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground" />
+                        <span>{booking.additionalInfo}</span>
+                      </p>
+                    </div>
+                  )}
+
+                  {booking.photoUrls && Array.isArray(booking.photoUrls) && booking.photoUrls.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-border/40">
+                      <div className="flex items-center gap-1 mb-2 text-sm text-muted-foreground">
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        <span>Attached Photos:</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {booking.photoUrls.map((url, index) => (
+                          <div
+                            key={index}
+                            className="relative h-16 rounded-md overflow-hidden border border-border cursor-pointer"
+                            onClick={() => setSelectedImage(url)}
+                          >
+                            <Image
+                              src={url || "/placeholder.svg"}
+                              alt={`Photo ${index + 1}`}
+                              fill
+                              className="object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
               </div>
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Image Preview Dialog */}
+      {selectedImage && (
+        <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
+          <DialogContent className="max-w-3xl">
+            <DialogTitle>Photo Preview</DialogTitle>
+            <div className="relative w-full h-[60vh]">
+              <Image src={selectedImage || "/placeholder.svg"} alt="Photo preview" fill className="object-contain" />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

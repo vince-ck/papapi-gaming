@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { format } from "date-fns"
-import { GameSidebar } from "@/components/game-sidebar"
-import { MobileNav } from "@/components/mobile-nav"
 import {
   Loader2,
   CalendarClock,
@@ -24,10 +22,9 @@ import { getBookingById, cancelBooking } from "@/actions/request-details"
 import type { Booking } from "@/models/assistance"
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import Link from "next/link"
-import { Users, Heart, Calendar } from "lucide-react"
 import Image from "next/image"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { RequestEditForm } from "@/components/request-edit-form"
+import { RequestEditWizard } from "@/components/request-edit-wizard"
 import { CommentSection } from "@/components/comment-section"
 import { getComments } from "@/actions/comments"
 import type { Comment } from "@/models/comment"
@@ -140,8 +137,14 @@ export default function RequestDetailsPage() {
   // Handle booking update
   const handleBookingUpdated = (updatedBooking: Booking) => {
     setBooking(updatedBooking)
-    setIsEditMode(false)
+    // Don't exit edit mode when updates happen automatically
+    // setIsEditMode(false);
     setMessage({ type: "success", text: "Request updated successfully" })
+
+    // Clear message after a short delay
+    setTimeout(() => {
+      setMessage(null)
+    }, 2000)
   }
 
   // Status badge styling
@@ -245,318 +248,233 @@ export default function RequestDetailsPage() {
   const canCancel = booking && (booking.status === "pending" || booking.status === "confirmed")
 
   return (
-    <div className="flex min-h-screen">
-      <GameSidebar />
-      <div className="flex flex-1 flex-col">
-        <MobileNav />
+    <div className="w-full px-4 py-8 md:px-6 lg:px-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Request Details</h1>
+          <p className="text-muted-foreground">View and manage your assistance request</p>
+        </div>
+        <Button variant="outline" asChild>
+          <Link href="/recent">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Requests
+          </Link>
+        </Button>
+      </div>
 
-        <div className="container mx-auto py-8 px-4 md:px-6 lg:px-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Request Details</h1>
-              <p className="text-muted-foreground">View and manage your assistance request</p>
+      {message && (
+        <Alert variant={message.type === "success" ? "default" : "destructive"} className="mb-4">
+          <AlertDescription>{message.text}</AlertDescription>
+        </Alert>
+      )}
+
+      {isLoading ? (
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="text-center py-12">
+            <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-destructive opacity-50" />
+            <h3 className="text-xl font-medium mb-2">Request Not Found</h3>
+            <p className="text-muted-foreground mb-6">{error}</p>
+            <Button asChild>
+              <Link href="/recent">View All Requests</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : !booking ? (
+        <Card>
+          <CardContent className="text-center py-12">
+            <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-destructive opacity-50" />
+            <h3 className="text-xl font-medium mb-2">Request Not Found</h3>
+            <p className="text-muted-foreground mb-6">The requested assistance request could not be found</p>
+            <Button asChild>
+              <Link href="/recent">View All Requests</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : isEditMode ? (
+        <div className="w-full">
+          <RequestEditWizard booking={booking} onCancel={() => setIsEditMode(false)} onSuccess={handleBookingUpdated} />
+        </div>
+      ) : (
+        <Card>
+          <CardHeader className="border-b">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-primary/10">{getStatusIcon(booking.status)}</div>
+                <div>
+                  <CardTitle className="text-xl">{booking.assistanceTypeName}</CardTitle>
+                  <CardDescription>
+                    Request #{booking.requestNumber} • {getStatusBadge(booking.status)}
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {canEdit && (
+                  <Button variant="outline" className="gap-2" onClick={() => setIsEditMode(true)}>
+                    <Edit className="h-4 w-4" />
+                    Edit Request
+                  </Button>
+                )}
+                {canCancel && (
+                  <Button variant="destructive" className="gap-2" onClick={() => setShowCancelDialog(true)}>
+                    <XCircle className="h-4 w-4" />
+                    Cancel Request
+                  </Button>
+                )}
+              </div>
             </div>
+          </CardHeader>
+
+          <CardContent className="py-6">
+            <div className="space-y-6">
+              {/* Request Information */}
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Request Information</h3>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Request Number</span>
+                      <div className="flex items-center gap-1">
+                        <code className="text-xs bg-muted px-2 py-1 rounded">{booking.requestNumber}</code>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => copyToClipboard(booking.requestNumber, "requestNumber")}
+                        >
+                          {copiedRequestNumber ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Status</span>
+                      <span>{getStatusBadge(booking.status)}</span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Created</span>
+                      <span className="text-sm">
+                        {booking.createdAt ? format(new Date(booking.createdAt), "PPP p") : "N/A"}
+                      </span>
+                    </div>
+
+                    {booking.updatedAt && booking.updatedAt !== booking.createdAt && (
+                      <div className="flex justify-between">
+                        <span className="text-sm text-muted-foreground">Last Updated</span>
+                        <span className="text-sm">{format(new Date(booking.updatedAt), "PPP p")}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Contact Information</h3>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Character ID</span>
+                      <div className="flex items-center gap-1">
+                        <span>{booking.characterId}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => copyToClipboard(booking.characterId, "characterId")}
+                        >
+                          {copiedCharacterId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Contact Info</span>
+                      <div className="flex items-center gap-1">
+                        <span>{booking.contactInfo}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => copyToClipboard(booking.contactInfo, "contactInfo")}
+                        >
+                          {copiedContactInfo ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+
+          <CardFooter className="border-t p-4 flex justify-between">
+            <p className="text-sm text-muted-foreground">
+              {booking.status === "pending"
+                ? "Your request is pending. Our team will review it shortly."
+                : booking.status === "confirmed"
+                  ? "Your request has been confirmed. Our team will assist you at the scheduled time."
+                  : booking.status === "completed"
+                    ? "This request has been completed. Thank you for using our service."
+                    : "This request has been cancelled."}
+            </p>
             <Button variant="outline" asChild>
               <Link href="/recent">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Requests
               </Link>
             </Button>
-          </div>
+          </CardFooter>
+        </Card>
+      )}
 
-          {message && (
-            <Alert variant={message.type === "success" ? "default" : "destructive"} className="mb-4">
-              <AlertDescription>{message.text}</AlertDescription>
-            </Alert>
-          )}
+      {!isLoading && !error && booking && (
+        <Card className="mt-6">
+          <CardContent className="py-6">
+            <CommentSection requestId={booking._id?.toString() || ""} initialComments={comments} />
+          </CardContent>
+        </Card>
+      )}
 
-          {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      {/* Image Preview Dialog */}
+      {selectedImage && (
+        <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
+          <DialogContent className="max-w-3xl">
+            <DialogTitle>Photo Preview</DialogTitle>
+            <div className="relative w-full h-[60vh]">
+              <Image src={selectedImage || "/placeholder.svg"} alt="Photo preview" fill className="object-contain" />
             </div>
-          ) : error ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-destructive opacity-50" />
-                <h3 className="text-xl font-medium mb-2">Request Not Found</h3>
-                <p className="text-muted-foreground mb-6">{error}</p>
-                <Button asChild>
-                  <Link href="/recent">View All Requests</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ) : !booking ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-destructive opacity-50" />
-                <h3 className="text-xl font-medium mb-2">Request Not Found</h3>
-                <p className="text-muted-foreground mb-6">The requested assistance request could not be found</p>
-                <Button asChild>
-                  <Link href="/recent">View All Requests</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ) : isEditMode ? (
-            <RequestEditForm booking={booking} onCancel={() => setIsEditMode(false)} onSuccess={handleBookingUpdated} />
-          ) : (
-            <Card>
-              <CardHeader className="border-b">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-full bg-primary/10">{getStatusIcon(booking.status)}</div>
-                    <div>
-                      <CardTitle className="text-xl">{booking.assistanceTypeName}</CardTitle>
-                      <CardDescription>
-                        Request #{booking.requestNumber} • {getStatusBadge(booking.status)}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {canEdit && (
-                      <Button variant="outline" className="gap-2" onClick={() => setIsEditMode(true)}>
-                        <Edit className="h-4 w-4" />
-                        Edit Request
-                      </Button>
-                    )}
-                    {canCancel && (
-                      <Button variant="destructive" className="gap-2" onClick={() => setShowCancelDialog(true)}>
-                        <XCircle className="h-4 w-4" />
-                        Cancel Request
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="py-6">
-                <div className="space-y-6">
-                  {/* Request Information */}
-                  <div className="grid gap-6 md:grid-cols-2">
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Request Information</h3>
-
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Request Number</span>
-                          <div className="flex items-center gap-1">
-                            <code className="text-xs bg-muted px-2 py-1 rounded">{booking.requestNumber}</code>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => copyToClipboard(booking.requestNumber, "requestNumber")}
-                            >
-                              {copiedRequestNumber ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Status</span>
-                          <span>{getStatusBadge(booking.status)}</span>
-                        </div>
-
-                        <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Created</span>
-                          <span className="text-sm">
-                            {booking.createdAt ? format(new Date(booking.createdAt), "PPP p") : "N/A"}
-                          </span>
-                        </div>
-
-                        {booking.updatedAt && booking.updatedAt !== booking.createdAt && (
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Last Updated</span>
-                            <span className="text-sm">{format(new Date(booking.updatedAt), "PPP p")}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Contact Information</h3>
-
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Character ID</span>
-                          <div className="flex items-center gap-1">
-                            <span>{booking.characterId}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => copyToClipboard(booking.characterId, "characterId")}
-                            >
-                              {copiedCharacterId ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Contact Info</span>
-                          <div className="flex items-center gap-1">
-                            <span>{booking.contactInfo}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => copyToClipboard(booking.contactInfo, "contactInfo")}
-                            >
-                              {copiedContactInfo ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Willing to Donate</span>
-                          <div className="flex items-center gap-1">
-                            <Heart
-                              className={`h-3.5 w-3.5 ${
-                                booking.willingToDonate === "yes" ? "text-red-500 fill-red-500" : ""
-                              }`}
-                            />
-                            <span>{booking.willingToDonate === "yes" ? "Yes" : "No"}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Number of Slots</span>
-                          <div className="flex items-center gap-1">
-                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span>
-                              {booking.slots} {booking.slots === 1 ? "slot" : "slots"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Schedule Information */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Schedule Information</h3>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="p-4 rounded-md border">
-                        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          Available Days
-                        </h4>
-                        <p>{formatSelectedDays(booking.selectedDays)}</p>
-                      </div>
-
-                      <div className="p-4 rounded-md border">
-                        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
-                          Time Range
-                        </h4>
-                        <p>
-                          {booking.timeRangePreset === "custom"
-                            ? `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`
-                            : getTimeRangeLabel(booking.timeRangePreset)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Additional Information */}
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-medium">Additional Information</h3>
-                    <div className="p-4 rounded-md border">
-                      <p className="whitespace-pre-wrap">{booking.additionalInfo}</p>
-                    </div>
-                  </div>
-
-                  {/* Attached Photos */}
-                  {booking.photoUrls && Array.isArray(booking.photoUrls) && booking.photoUrls.length > 0 && (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Attached Photos</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {booking.photoUrls.map((url, index) => (
-                          <div
-                            key={index}
-                            className="relative h-40 rounded-md overflow-hidden border border-border cursor-pointer"
-                            onClick={() => setSelectedImage(url)}
-                          >
-                            <Image
-                              src={url || "/placeholder.svg"}
-                              alt={`Photo ${index + 1}`}
-                              fill
-                              className="object-cover"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-
-              <CardFooter className="border-t p-4 flex justify-between">
-                <p className="text-sm text-muted-foreground">
-                  {booking.status === "pending"
-                    ? "Your request is pending. Our team will review it shortly."
-                    : booking.status === "confirmed"
-                      ? "Your request has been confirmed. Our team will assist you at the scheduled time."
-                      : booking.status === "completed"
-                        ? "This request has been completed. Thank you for using our service."
-                        : "This request has been cancelled."}
-                </p>
-                <Button variant="outline" asChild>
-                  <Link href="/recent">
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Requests
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          )}
-
-          {!isLoading && !error && booking && (
-            <Card className="mt-6">
-              <CardContent className="py-6">
-                <CommentSection requestId={booking._id?.toString() || ""} initialComments={comments} />
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Image Preview Dialog */}
-        {selectedImage && (
-          <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
-            <DialogContent className="max-w-3xl">
-              <DialogTitle>Photo Preview</DialogTitle>
-              <div className="relative w-full h-[60vh]">
-                <Image src={selectedImage || "/placeholder.svg"} alt="Photo preview" fill className="object-contain" />
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-
-        {/* Cancel Confirmation Dialog */}
-        <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-          <DialogContent>
-            <DialogTitle>Cancel Request</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to cancel this assistance request? This action cannot be undone.
-            </DialogDescription>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCancelDialog(false)} disabled={isCancelling}>
-                Keep Request
-              </Button>
-              <Button variant="destructive" onClick={handleCancelBooking} disabled={isCancelling}>
-                {isCancelling ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Cancelling...
-                  </>
-                ) : (
-                  "Cancel Request"
-                )}
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
+      )}
+
+      {/* Cancel Confirmation Dialog */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent>
+          <DialogTitle>Cancel Request</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to cancel this assistance request? This action cannot be undone.
+          </DialogDescription>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCancelDialog(false)} disabled={isCancelling}>
+              Keep Request
+            </Button>
+            <Button variant="destructive" onClick={handleCancelBooking} disabled={isCancelling}>
+              {isCancelling ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                "Cancel Request"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

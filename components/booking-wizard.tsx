@@ -31,6 +31,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { MultiFileUpload } from "@/components/multi-file-upload"
 import React from "react"
+import Link from "next/link"
 
 // Form schema
 const formSchema = z.object({
@@ -78,7 +79,7 @@ const TIME_RANGES = {
     endTime: "10:00",
   },
   middle: {
-    label: "Middle (10:00 - 14:00)",
+    label: "Midday (10:00 - 14:00)",
     startTime: "10:00",
     endTime: "14:00",
   },
@@ -125,6 +126,8 @@ export function BookingWizard() {
   const [pendingSubmission, setPendingSubmission] = useState(false)
   const [selectAllDays, setSelectAllDays] = useState(false)
   const [selectedAssistanceType, setSelectedAssistanceType] = useState<AssistanceType | null>(null)
+  const [booking, setBooking] = useState<any | null>(null)
+  const [bookingId, setBookingId] = useState<string | null>(null)
 
   // Direct DOM references for problematic fields
   const characterIdRef = useRef<HTMLInputElement>(null)
@@ -431,6 +434,14 @@ export function BookingWizard() {
       form.setValue("additionalInfo", additionalInfoRef.current.value)
     }
 
+    // If scheduling is disabled, set default values for schedule fields
+    if (selectedAssistanceType?.allowSchedule === false) {
+      form.setValue("selectedDays", ["monday"]) // Set a default day to pass validation
+      form.setValue("timeRangePreset", "early")
+      form.setValue("startTime", TIME_RANGES.early.startTime)
+      form.setValue("endTime", TIME_RANGES.early.endTime)
+    }
+
     // Validate all fields before submission
     const isValid = await form.trigger()
 
@@ -562,9 +573,14 @@ export function BookingWizard() {
         const result = await createBooking(formData)
 
         if (result.success) {
-          // Set the request number
+          // Set the request number and booking ID
           if (result.requestNumber) {
             setRequestNumber(result.requestNumber)
+          }
+
+          // Store the booking ID if available
+          if (result.booking && result.booking._id) {
+            setBookingId(result.booking._id.toString())
           }
 
           // Set isComplete to true - this will now completely change the UI
@@ -701,15 +717,18 @@ export function BookingWizard() {
               </Button>
             </div>
             <p className="text-sm text-center font-medium">
-              Please save this request number for tracking your booking status
+              Keep this request number to check on your assistance request anytime.
             </p>
           </div>
         )}
 
-        <div className="flex justify-center mt-8">
-          <Button onClick={handleNewBooking} className="px-8">
-            Book Another Request
-          </Button>
+        <div className="flex justify-center gap-4 mt-8">
+          {bookingId && (
+            <Button asChild>
+              <Link href={`/request/${bookingId}`}>View This Request</Link>
+            </Button>
+          )}
+          <Button onClick={handleNewBooking}>Book Another Request</Button>
         </div>
       </div>
     )
@@ -1158,7 +1177,7 @@ export function BookingWizard() {
                         <label
                           className={`flex-1 flex items-center justify-center p-4 rounded-md border-2 cursor-pointer transition-all ${
                             field.value === "no"
-                              ? "bg-muted border-muted-foreground/30 text-muted-foreground"
+                              ? "bg-background/90 border-gray-400 text-foreground font-medium shadow-sm"
                               : "bg-background border-input hover:bg-muted/50"
                           }`}
                         >

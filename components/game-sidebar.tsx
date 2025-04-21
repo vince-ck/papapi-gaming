@@ -22,7 +22,6 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-  SidebarRail,
 } from "@/components/ui/sidebar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { signOut, useSession } from "next-auth/react"
@@ -85,7 +84,7 @@ export function GameSidebar() {
   }
 
   return (
-    <Sidebar variant="floating" className="border-r border-border/40 bg-card/50">
+    <Sidebar className="flex flex-col">
       <SidebarHeader className="flex flex-col items-center justify-center py-6 border-b border-border/40">
         <Link href="/games/ragnarok-m-classic" className="flex items-center justify-between w-full px-4">
           <div className="flex items-center gap-3">
@@ -97,7 +96,7 @@ export function GameSidebar() {
           </div>
         </Link>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="flex flex-col flex-1 overflow-y-auto">
         <SidebarMenu>
           {/* Games item with submenu - now the first item */}
           <Collapsible open={gamesOpen} onOpenChange={setGamesOpen} className="group/collapsible">
@@ -107,7 +106,6 @@ export function GameSidebar() {
                   asChild
                   isActive={activeItem === "games" || gamesOpen}
                   onClick={() => setActiveItem("games")}
-                  tooltip="Games"
                 >
                   <Button variant="ghost" className="w-full justify-start">
                     <Gamepad2 className="mr-2 h-5 w-5" />
@@ -154,7 +152,7 @@ export function GameSidebar() {
                 asChild
                 isActive={activeItem === item.id}
                 onClick={() => setActiveItem(item.id)}
-                tooltip={item.label}
+                className={activeItem === item.id ? "bg-muted/80 hover:bg-muted" : "hover:bg-muted/50"}
               >
                 <Button variant="ghost" className="w-full justify-start" asChild={!!item.href}>
                   {item.href ? (
@@ -183,7 +181,7 @@ export function GameSidebar() {
                 asChild
                 isActive={activeItem === item.id}
                 onClick={() => setActiveItem(item.id)}
-                tooltip={item.label}
+                className={activeItem === item.id ? "bg-muted/80 hover:bg-muted" : "hover:bg-muted/50"}
               >
                 <Button variant="ghost" className="w-full justify-start">
                   <item.icon className="mr-2 h-5 w-5" />
@@ -200,7 +198,7 @@ export function GameSidebar() {
                 asChild
                 isActive={activeItem === item.id}
                 onClick={() => setActiveItem(item.id)}
-                tooltip={item.label}
+                className={activeItem === item.id ? "bg-muted/80 hover:bg-muted" : "hover:bg-muted/50"}
               >
                 <Button variant="ghost" className="w-full justify-start" asChild>
                   <Link href="/admin">
@@ -215,14 +213,14 @@ export function GameSidebar() {
           {/* Sign In / Sign Out button */}
           <SidebarMenuItem>
             {session ? (
-              <SidebarMenuButton asChild tooltip="Sign Out">
+              <SidebarMenuButton asChild>
                 <Button variant="ghost" className="w-full justify-start" onClick={handleSignOut}>
                   <LogOut className="mr-2 h-5 w-5" />
                   <span>Sign Out</span>
                 </Button>
               </SidebarMenuButton>
             ) : (
-              <SidebarMenuButton asChild tooltip="Sign In">
+              <SidebarMenuButton asChild>
                 <Button variant="ghost" className="w-full justify-start" onClick={handleSignIn}>
                   <LogOut className="mr-2 h-5 w-5" transform="rotate(180)" />
                   <span>Sign In</span>
@@ -250,7 +248,6 @@ export function GameSidebar() {
           </div>
         )}
       </SidebarFooter>
-      <SidebarRail />
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
     </Sidebar>
   )

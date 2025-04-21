@@ -60,7 +60,7 @@ export async function checkDuplicateBooking(characterId: string, assistanceTypeI
   }
 }
 
-// Update the createBooking function to handle the new fields
+// Update the createBooking function to better handle requests with disabled scheduling
 export async function createBooking(formData: FormData): Promise<{
   success: boolean
   message: string
@@ -76,19 +76,40 @@ export async function createBooking(formData: FormData): Promise<{
     const contactInfo = formData.get("contactInfo") as string
     const assistanceTypeId = formData.get("assistanceTypeId") as string
     const additionalInfo = formData.get("additionalInfo") as string
-    const startDateTime = new Date(formData.get("startDateTime") as string)
-    const endDateTime = new Date(formData.get("endDateTime") as string)
+
+    // These might be empty for assistance types with scheduling disabled
+    const startDateTime = formData.get("startDateTime") ? new Date(formData.get("startDateTime") as string) : new Date()
+    const endDateTime = formData.get("endDateTime")
+      ? new Date(formData.get("endDateTime") as string)
+      : new Date(Date.now() + 3600000)
 
     // Get photo URLs from JSON string
     const photoUrlsJson = formData.get("photoUrls") as string
-    const photoUrls = photoUrlsJson ? JSON.parse(photoUrlsJson) : []
+    let photoUrls = []
+    try {
+      if (photoUrlsJson) {
+        photoUrls = JSON.parse(photoUrlsJson)
+      }
+    } catch (error) {
+      console.error("Error parsing photo URLs:", error)
+      // Continue with empty array if parsing fails
+    }
 
     // Get new fields from the form
-    const selectedDaysJson = formData.get("selectedDays") as string
-    const selectedDays = selectedDaysJson ? JSON.parse(selectedDaysJson) : []
-    const timeRangePreset = formData.get("timeRangePreset") as "early" | "middle" | "late" | "custom"
-    const startTime = formData.get("startTime") as string
-    const endTime = formData.get("endTime") as string
+    let selectedDays = []
+    try {
+      const selectedDaysJson = formData.get("selectedDays") as string
+      if (selectedDaysJson) {
+        selectedDays = JSON.parse(selectedDaysJson)
+      }
+    } catch (error) {
+      console.error("Error parsing selected days:", error)
+      // Continue with empty array if parsing fails
+    }
+
+    const timeRangePreset = (formData.get("timeRangePreset") as "early" | "middle" | "late" | "custom") || "early"
+    const startTime = (formData.get("startTime") as string) || ""
+    const endTime = (formData.get("endTime") as string) || ""
     const slots = Number.parseInt((formData.get("slots") as string) || "1", 10)
     const willingToDonate = (formData.get("willingToDonate") as "yes" | "no") || "no"
 
@@ -148,6 +169,9 @@ export async function createBooking(formData: FormData): Promise<{
     // Generate a unique request number
     const requestNumber = generateRequestNumber(characterId)
 
+    // Check if scheduling is disabled for this assistance type
+    const isSchedulingDisabled = assistanceType.allowSchedule === false
+
     // Replace the existing startDateTime and endDateTime in the booking object
     const booking: Booking = {
       requestNumber,
@@ -159,12 +183,12 @@ export async function createBooking(formData: FormData): Promise<{
       additionalInfo,
       photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
 
-      // New fields
-      selectedDays,
-      timeRangePreset,
-      startTime: startTime || undefined,
-      endTime: endTime || undefined,
-      slots,
+      // New fields - use empty or default values if scheduling is disabled
+      selectedDays: isSchedulingDisabled ? [] : selectedDays,
+      timeRangePreset: isSchedulingDisabled ? "early" : timeRangePreset,
+      startTime: isSchedulingDisabled ? undefined : startTime || undefined,
+      endTime: isSchedulingDisabled ? undefined : endTime || undefined,
+      slots: isSchedulingDisabled ? 1 : slots,
       willingToDonate,
 
       // Legacy fields
