@@ -35,6 +35,13 @@ export function AdminPanel() {
       link: "/admin/assistance-types",
     },
     {
+      id: "assistance-templates",
+      name: "Assistance Templates",
+      description: "Create and manage pre-defined assistance templates",
+      icon: FileText,
+      link: "/admin/assistance-templates",
+    },
+    {
       id: "users",
       name: "User Management",
       description: "Manage user accounts and permissions",

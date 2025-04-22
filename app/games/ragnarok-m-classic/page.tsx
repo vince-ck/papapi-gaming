@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { getFeaturedToons } from "@/actions/featured-toons"
 import { BookingWizard } from "@/components/booking-wizard"
-import { BookingsDisplay } from "@/components/bookings-display"
 import type { FeaturedToon } from "@/models/featured-toon"
 
 const SHOW_FEATURED_TOONS = false // Set to false to hide featured toons section
@@ -134,13 +133,8 @@ export default function RagnarokMClassicPage() {
           <div className="container mx-auto py-8 px-4 md:px-6 lg:px-8">
             {/* Book Assistance Form - Removed duplicate header */}
             <div className="mb-8">
-              <div className="grid gap-8 md:grid-cols-2">
-                <div>
-                  <BookingWizard />
-                </div>
-                <div>
-                  <BookingsDisplay />
-                </div>
+              <div className="max-w-4xl mx-auto">
+                <BookingWizard />
               </div>
             </div>
           </div>

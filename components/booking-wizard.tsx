@@ -33,6 +33,10 @@ import { MultiFileUpload } from "@/components/multi-file-upload"
 import React from "react"
 import Link from "next/link"
 
+// Add this import at the top of the file
+import { AssistanceTemplates } from "@/components/assistance-templates"
+import type { AssistanceTemplate } from "@/models/assistance-template"
+
 // Form schema
 const formSchema = z.object({
   characterId: z.string().regex(/^\d+$/, {
@@ -709,8 +713,42 @@ export function BookingWizard() {
     saveToLocalStorage("contactInfo", value)
   }
 
+  // Inside the BookingWizard component, add this function before the return statement
+  const handleSelectTemplate = (template: AssistanceTemplate) => {
+    // Set form values from template
+    form.setValue("assistanceTypeId", template.assistanceTypeId.toString())
+    form.setValue("additionalInfo", template.additionalInfo)
+
+    // Set selected assistance type
+    const selectedType = assistanceTypes.find((type) => type._id?.toString() === template.assistanceTypeId.toString())
+    setSelectedAssistanceType(selectedType || null)
+
+    // Set schedule values if available
+    if (template.selectedDays && template.selectedDays.length > 0) {
+      form.setValue("selectedDays", template.selectedDays)
+      setSelectAllDays(template.selectedDays.length === 7)
+    }
+
+    if (template.timeRangePreset) {
+      form.setValue("timeRangePreset", template.timeRangePreset)
+      setSelectedTimeRange(template.timeRangePreset)
+
+      if (template.timeRangePreset === "custom") {
+        if (template.startTime) form.setValue("startTime", template.startTime)
+        if (template.endTime) form.setValue("endTime", template.endTime)
+      }
+    }
+
+    if (template.slots) {
+      form.setValue("slots", template.slots)
+    }
+
+    // Move to the assistance info step
+    setCurrentStep(1)
+  }
+
   // Render the completion screen
-  const renderCompletionScreen = () => {
+  const renderCompletionScreenContent = () => {
     return (
       <div className="space-y-6 py-4">
         <div className="text-center">
@@ -769,6 +807,7 @@ export function BookingWizard() {
               <FormLabel htmlFor="characterId">Character ID</FormLabel>
               <div className="flex items-center">
                 <Gamepad2 className="mr-2 h-4 w-4 text-muted-foreground" />
+                <input ref={characterIdRef} id="characterId" />
                 <input
                   ref={characterIdRef}
                   id="characterId"
@@ -1230,9 +1269,10 @@ export function BookingWizard() {
   }
 
   // Render the form wizard
-  const renderFormWizard = () => {
+  const renderFormWizardContent = () => {
     return (
       <div className="space-y-6">
+        <AssistanceTemplates onSelectTemplate={handleSelectTemplate} />
         <Form {...form}>
           <FormWizard
             steps={steps}
@@ -1274,7 +1314,7 @@ export function BookingWizard() {
         )}
 
         {/* Completely separate rendering based on completion state */}
-        {isComplete ? renderCompletionScreen() : renderFormWizard()}
+        {isComplete ? renderCompletionScreenContent() : renderFormWizardContent()}
       </CardContent>
       <CardFooter className="flex justify-between text-sm text-muted-foreground">
         {!isComplete && <p>Please fill out all required fields to proceed</p>}
